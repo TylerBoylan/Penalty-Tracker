@@ -12,9 +12,9 @@
 html{background:#000}
 body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",system-ui,sans-serif;-webkit-font-smoothing:antialiased;
  padding:calc(env(safe-area-inset-top) + 6px) calc(env(safe-area-inset-right) + 14px) calc(env(safe-area-inset-bottom) + 96px) calc(env(safe-area-inset-left) + 14px);overscroll-behavior-y:none}
-header{display:flex;align-items:center;justify-content:space-between;margin:8px 2px 14px}
-h1{font-size:30px;font-weight:800;letter-spacing:-.5px;margin:0}
-h2{font-size:13px;color:var(--mut);margin:22px 4px 8px;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+header{display:flex;align-items:center;justify-content:space-between;margin:4px 2px 8px}
+h1{font-size:22px;font-weight:800;letter-spacing:-.5px;margin:0}
+h2{font-size:11px;color:var(--mut);margin:14px 4px 6px;text-transform:uppercase;letter-spacing:1px;font-weight:600}
 .card{background:var(--card);border-radius:var(--r);padding:16px;margin-bottom:12px}
 button{font:inherit;font-weight:600;border:0;border-radius:12px;min-height:46px;padding:0 14px;background:var(--card2);color:var(--tx);cursor:pointer}
 button:active{opacity:.7}
@@ -25,11 +25,13 @@ input,select,textarea{font:inherit;font-size:17px;width:100%;min-height:46px;bor
 input[type=checkbox]{-webkit-appearance:checkbox;appearance:auto}
 textarea{min-height:70px;padding:10px}
 label{font-size:12px;color:var(--mut);display:block;margin:10px 2px 4px}
-.big{font-size:28px;font-weight:800;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.05}
+.big{font-size:23px;font-weight:800;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.05}
 .sub{color:var(--mut);font-size:13px}
-.hero{padding:22px 18px;background:linear-gradient(160deg,#1c1c1c,#0c0c0c);border:1px solid #222}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.stat{background:var(--card);border-radius:var(--r);padding:14px}.stat b{display:block;font-size:22px;margin:4px 0 2px;font-variant-numeric:tabular-nums}.stat span{font-size:12px;color:var(--mut)}
+.hero{padding:10px 14px;margin-bottom:8px;background:linear-gradient(160deg,#1c1c1c,#0c0c0c);border:1px solid #222}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.hl{font-size:11px;color:var(--mut);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hl b{color:var(--tx);font-weight:600}
+.ngr{display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:8px}.ngr .lg{width:24px;height:24px}.ngr .lg img{width:24px;height:24px}
+.stat{background:var(--card);border-radius:var(--r);padding:9px 12px}.stat b{display:block;font-size:18px;margin:2px 0 1px;font-variant-numeric:tabular-nums}.stat span{font-size:11px;color:var(--mut)}
 .flag{color:var(--yel);font-size:12px;font-weight:700;margin-top:4px}
 .tm{display:inline-flex;align-items:center;gap:6px;font-weight:700}
 .lg{width:28px;height:28px;display:inline-grid;place-items:center;flex:none}
@@ -177,6 +179,7 @@ $$("nav button").forEach(b=>b.onclick=()=>{if(b.dataset.v=="form")editId=null;sh
 $("#gear").onclick=()=>show("set");
 const netLine=g=>"",aside=()=>set.payType==="1099"?"Set aside":"Est. taxes",
  taxBox=g=>{const e=taxEst(g,set);return `<div class="row taxbox" style="margin-top:8px;font-size:13px;text-align:center"><div><div class="sub">Gross</div><b>${money(e.gross)}</b></div><div><div class="sub">${aside()} (${+taxRate(set).toFixed(2)}%)</div><b>−${money(e.tax)}</b></div><div><div class="sub">Est. take-home</div><b>${money(e.net)}</b></div></div>`},
+ heroTax=g=>{const e=taxEst(g,set);return `Gross <b>${money(e.gross)}</b> · ${aside()} −<b>${money(e.tax)}</b> · Est. take-home <b>${money(e.net)}</b>`},
  DISC='<div class="sub" style="text-align:center;font-size:11px;margin-top:6px">Estimate only, not tax advice</div>';
 // shift row with swipe-left to reveal Edit/Delete; tap the row toggles it too
 function shiftRow(s){return `<div class="swr" data-id="${esc(s.id)}"><div class="swa"><button class="ed" data-e="${esc(s.id)}">Edit</button><button class="dl" data-d="${esc(s.id)}">Delete</button></div>
@@ -217,12 +220,10 @@ function render(){
  if(view=="dash"){
   const ng=nextGame(shifts,today());
   const pos=Object.entries(T.byPos).map(([k,v])=>`<div class="row" style="padding:6px 0"><span>${esc(k)}</span><span class="sub">${v.n} · ${hrs(v.h)}</span><span style="text-align:right">${money(v.g)}</span></div>`).join("")||'<div class="sub">No worked shifts yet</div>';
-  $("#v-dash").innerHTML=`<div class="card hero"><div class="sub">NEXT PAYDAY</div><div class="big">${money(T.nextPay.g)}</div>
-  <div style="font-weight:600;margin-top:4px">${fmtD(T.nextPayday)}</div>
-  <div class="sub" style="margin-top:6px">expected gross${netLine(T.nextPay.g)} · ${T.nextPay.n} shift(s), ${hrs(T.nextPay.h)} · worked so far ${money(T.nextPayWorked.g)}</div>${taxBox(T.nextPay.g)}${DISC}</div>
-  <h2>Next game</h2>${ng?`<div class="card" id="ngc" style="cursor:pointer"><div class="match"><div class="side">${logo(ng.away,1)}<span>${esc(ng.away||"—")}</span></div><div class="at">@</div><div class="side">${logo(ng.home,1)}<span>${esc(ng.home||"—")}</span></div></div>
-   <div class="row"><div><div style="font-weight:600">${fmtS(ng.date)}${ng.start?" · "+t12(ng.start):""}</div><div class="sub">${esc(ng.position)} · ${esc(ng.mode)} · ${hrs(hoursOf(ng))}</div></div><div style="text-align:right"><div style="font-size:22px;font-weight:700">${money(grossOf(ng,set))}</div><div class="sub">est. pay</div></div></div>
-   ${ng.confirm?'<div class="flag">⚠ hours estimated – confirm</div>':""}</div>`:'<div class="card sub">No upcoming games</div>'}
+  $("#v-dash").innerHTML=`<div class="card hero"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px"><div><div class="sub" style="font-size:10px;letter-spacing:1px">NEXT PAYDAY · ${fmtD(T.nextPayday)}</div><div class="big">${money(T.nextPay.g)}</div></div><div class="sub" style="font-size:11px;text-align:right">${T.nextPay.n} shift(s) · ${hrs(T.nextPay.h)}<br>worked ${money(T.nextPayWorked.g)}</div></div>
+  <div class="hl">${heroTax(T.nextPay.g)}</div><div class="sub" style="font-size:9px;opacity:.7;margin-top:1px">Estimate only, not tax advice</div></div>
+  <h2>Next game</h2>${ng?`<div class="card ngr" id="ngc" style="cursor:pointer"><span class="tm">${logo(ng.away)}${esc(ng.away||"—")}</span><span class="sub">@</span><span class="tm">${logo(ng.home)}${esc(ng.home||"—")}</span>
+   <div style="flex:1;min-width:0;text-align:right"><div style="font-size:12px;font-weight:600;white-space:nowrap">${fmtS(ng.date)}${ng.start?" · "+t12(ng.start):""} · ${money(grossOf(ng,set))}</div><div class="sub" style="font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(ng.position)} · ${esc(ng.mode)} · ${hrs(hoursOf(ng))}${ng.confirm?' · <span style="color:var(--yel)">⚠ confirm</span>':""}</div></div></div>`:'<div class="card sub">No upcoming games</div>'}
   <div class="grid">
   <div class="stat"><span>This period (${T.periodInfo.start.slice(5)}–${T.periodInfo.end.slice(5)})</span><b>${money(T.period.g)}</b><span>${hrs(T.period.h)} · ${T.period.n} games</span></div>
   <div class="stat"><span>Year to date</span><b>${money(Y.g)}</b><span>${hrs(Y.h)} · ${Y.n} games</span></div>
