@@ -1,0 +1,185 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Gigs">
+<meta name="theme-color" content="#0a1630"><title>Gig Tracker</title>
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%230a1630'/%3E%3Ctext x='90' y='120' font-size='90' text-anchor='middle' fill='%2300e5ff' font-family='Arial' font-weight='bold'%3E$%3C/text%3E%3C/svg%3E">
+<style>
+:root{--bg:#0a1630;--card:#12224a;--line:#1f3570;--cy:#00e5ff;--tx:#e8f4ff;--mut:#8aa0c8;--red:#ff4d5e;--yel:#ffc93c;--gry:#5b6782;--grn:#3ddc84}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 10px calc(env(safe-area-inset-bottom) + 80px)}
+h1{font-size:20px;color:var(--cy);margin:12px 4px}
+h2{font-size:15px;color:var(--cy);margin:14px 4px 6px;text-transform:uppercase;letter-spacing:1px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;margin-bottom:10px}
+button{font:inherit;font-weight:600;border:0;border-radius:12px;min-height:48px;padding:0 12px;background:var(--line);color:var(--tx)}
+button.pri,button.on{background:var(--cy);color:#04122b}button.dng{background:#5a1a26}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1}
+input,select,textarea{font:inherit;font-size:18px;width:100%;min-height:48px;border-radius:10px;border:1px solid var(--line);background:#0b1838;color:var(--tx);padding:0 10px}
+textarea{min-height:70px;padding:8px}
+label{font-size:12px;color:var(--mut);display:block;margin:6px 2px 2px}
+.big{font-size:40px;font-weight:800;color:var(--cy);text-align:center;font-variant-numeric:tabular-nums}
+.sub{color:var(--mut);font-size:13px;text-align:center}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.stat{background:#0e1c40;border-radius:10px;padding:10px}.stat b{display:block;font-size:22px}.stat span{font-size:12px;color:var(--mut)}
+.sh{border-left:6px solid var(--gry);padding:8px;margin:6px 0;background:#0e1c40;border-radius:10px}
+.sh.w{border-color:var(--cy)}.sh.u{border-color:var(--yel)}
+.flag{color:var(--yel);font-size:12px;font-weight:700}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;gap:6px;padding:8px 10px calc(env(safe-area-inset-bottom) + 8px);background:#071027;border-top:1px solid var(--line)}
+nav button{flex:1;min-height:52px}
+.hide{display:none}
+</style></head><body>
+<h1>🏒 Gig Tracker</h1>
+<div id="v-dash"></div><div id="v-shifts" class="hide"></div><div id="v-form" class="hide"></div><div id="v-pay" class="hide"></div><div id="v-set" class="hide"></div>
+<nav><button data-v="dash" class="on">Home</button><button data-v="shifts">Shifts</button><button data-v="form" class="pri">＋</button><button data-v="pay">Paydays</button><button data-v="set">⚙︎</button></nav>
+<script>
+/*LOGIC-START*/
+const TEAMS=["ANA","BOS","BUF","CAR","CBJ","CGY","CHI","COL","DAL","DET","EDM","FLA","LAK","MIN","MTL","NJD","NSH","NYI","NYR","OTT","PHI","PIT","SEA","SJS","STL","TBL","TOR","UTA","VAN","VGK","WPG","WSH"];
+const DEF_SET={rate:29,tax:0,split:15,seasonStart:10,seasonEnd:6,positions:["SAV","EA","Scorer","Spotter","Other"]};
+const pad=n=>String(n).padStart(2,"0");
+const ymd=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const parseD=s=>{const[a,b,c]=s.split("-").map(Number);return new Date(a,b-1,c)};
+const lastDay=(y,m)=>new Date(y,m+1,0).getDate(); // m 0-based
+// payday on 15th, and on 30th (or last day if month shorter, i.e. Feb)
+const secondPay=(y,m)=>Math.min(30,lastDay(y,m));
+function hoursOf(s){
+  if(s.hours!==""&&s.hours!=null&&!isNaN(+s.hours))return +s.hours;
+  if(s.start&&s.end){const[a,b]=s.start.split(":").map(Number),[c,d]=s.end.split(":").map(Number);let m=(c*60+d)-(a*60+b);if(m<0)m+=1440;return m/60}
+  return 0;
+}
+const grossOf=(s,set)=>hoursOf(s)*(s.rate!=null&&s.rate!==""?+s.rate:set.rate);
+// period for a shift date: days 1..split -> paid on 15th; split+1..end -> paid on 30th/last day
+function periodFor(dateStr,set){
+  const d=parseD(dateStr),y=d.getFullYear(),m=d.getMonth(),day=d.getDate(),sp=Math.min(set.split,lastDay(y,m)-1);
+  if(day<=sp)return{key:`${y}-${pad(m+1)}-A`,start:`${y}-${pad(m+1)}-01`,end:`${y}-${pad(m+1)}-${pad(sp)}`,payday:`${y}-${pad(m+1)}-15`};
+  return{key:`${y}-${pad(m+1)}-B`,start:`${y}-${pad(m+1)}-${pad(sp+1)}`,end:`${y}-${pad(m+1)}-${pad(lastDay(y,m))}`,payday:`${y}-${pad(m+1)}-${pad(secondPay(y,m))}`};
+}
+function nextPayday(todayStr){
+  const t=parseD(todayStr);let y=t.getFullYear(),m=t.getMonth();
+  for(let i=0;i<3;i++){for(const dd of[15,secondPay(y,m)]){const s=`${y}-${pad(m+1)}-${pad(dd)}`;if(s>=todayStr)return s}m++;if(m>11){m=0;y++}}
+}
+function seasonRange(todayStr,set){
+  const t=parseD(todayStr),y=t.getFullYear(),mo=t.getMonth()+1,sy=mo>=set.seasonStart?y:y-1;
+  const ey=set.seasonEnd<set.seasonStart?sy+1:sy;
+  return{start:`${sy}-${pad(set.seasonStart)}-01`,end:`${ey}-${pad(set.seasonEnd)}-${pad(lastDay(ey,set.seasonEnd-1))}`};
+}
+function sum(shifts,set,f){let h=0,g=0,n=0;for(const s of shifts)if(f(s)){h+=hoursOf(s);g+=grossOf(s,set);n++}return{h,g,n}}
+function totals(shifts,set,todayStr){
+  const worked=shifts.filter(s=>s.status==="worked"),np=nextPayday(todayStr);
+  const owedFor=p=>sum(shifts,set,s=>periodFor(s.date,set).payday===p); // includes upcoming planned
+  const cur=periodFor(todayStr,set),mon=todayStr.slice(0,7),sr=seasonRange(todayStr,set);
+  const byPos={};for(const s of worked){const k=s.position||"?";byPos[k]=byPos[k]||{h:0,g:0,n:0};byPos[k].h+=hoursOf(s);byPos[k].g+=grossOf(s,set);byPos[k].n++}
+  return{nextPayday:np,nextPay:owedFor(np),nextPayWorked:sum(worked,set,s=>periodFor(s.date,set).payday===np),
+    period:sum(worked,set,s=>periodFor(s.date,set).key===cur.key),periodInfo:cur,
+    month:sum(worked,set,s=>s.date.startsWith(mon)),season:sum(worked,set,s=>s.date>=sr.start&&s.date<=sr.end),
+    all:sum(worked,set,()=>true),upcoming:sum(shifts,set,s=>s.status!=="worked"),byPos,seasonRange:sr};
+}
+function csvEsc(v){v=v==null?"":String(v);return/[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+const COLS=["id","date","away","home","position","mode","start","end","hours","rate","status","confirm","notes"];
+function toCSV(shifts){return[COLS.join(",")].concat(shifts.map(s=>COLS.map(c=>csvEsc(s[c])).join(","))).join("\n")}
+function parseCSV(t){const rows=[];let r=[],f="",q=false;for(let i=0;i<t.length;i++){const c=t[i];
+  if(q){if(c=='"'){if(t[i+1]=='"'){f+='"';i++}else q=false}else f+=c}
+  else if(c=='"')q=true;else if(c==","){r.push(f);f=""}else if(c=="\n"||c=="\r"){if(c=="\r"&&t[i+1]=="\n")i++;r.push(f);rows.push(r);r=[];f=""}else f+=c}
+  if(f||r.length){r.push(f);rows.push(r)}
+  const h=rows.shift()||[];return rows.filter(x=>x.length>1).map(x=>{const o={};h.forEach((k,i)=>o[k]=x[i]??"");o.confirm=o.confirm==="true";return o})}
+if(typeof module!=="undefined")module.exports={periodFor,nextPayday,hoursOf,grossOf,totals,seasonRange,toCSV,parseCSV,DEF_SET};
+/*LOGIC-END*/
+if(typeof document!=="undefined"){
+const $=s=>document.querySelector(s),money=n=>"$"+n.toFixed(2),hrs=n=>(Math.round(n*100)/100)+"h";
+let set=Object.assign({},DEF_SET,JSON.parse(localStorage.getItem("gt_set")||"{}"));
+let shifts=JSON.parse(localStorage.getItem("gt_shifts")||"null");
+let pays=JSON.parse(localStorage.getItem("gt_pays")||"{}");
+if(!shifts){shifts=[
+ {id:"s1",date:"2026-11-05",away:"ANA",home:"EDM",position:"SAV",mode:"Remote",start:"20:00",end:"",hours:"3",status:"upcoming",confirm:true,notes:"8:00 PM start. Hours estimated – confirm"},
+ {id:"s2",date:"2026-11-08",away:"VGK",home:"BUF",position:"EA",mode:"Remote",start:"15:30",end:"",hours:"3",status:"upcoming",confirm:true,notes:"3:30 PM start. Hours estimated – confirm"}];}
+const save=()=>{localStorage.setItem("gt_shifts",JSON.stringify(shifts));localStorage.setItem("gt_set",JSON.stringify(set));localStorage.setItem("gt_pays",JSON.stringify(pays))};save();
+const today=()=>ymd(new Date()),net=g=>g*(1-(+set.tax||0)/100);
+const fmtD=s=>parseD(s).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric",year:"numeric"});
+const t12=t=>{if(!t)return"";let[h,m]=t.split(":").map(Number);return(h%12||12)+":"+pad(m)+(h<12?" AM":" PM")};
+let view="dash",filt="upcoming",editId=null;
+function show(v){view=v;document.querySelectorAll("[id^=v-]").forEach(e=>e.classList.add("hide"));$("#v-"+v).classList.remove("hide");
+ document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.v==v&&v!="form"));render();scrollTo(0,0)}
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{if(b.dataset.v=="form")editId=null;show(b.dataset.v)});
+const netLine=g=>+set.tax?` · est. net ${money(net(g))}`:"";
+function render(){
+ const T=totals(shifts,set,today());
+ if(view=="dash"){
+  const pos=Object.entries(T.byPos).map(([k,v])=>`<div class="row"><span>${k}</span><span>${v.n} · ${hrs(v.h)}</span><span style="text-align:right">${money(v.g)}</span></div>`).join("")||'<div class="sub">No worked shifts yet</div>';
+  $("#v-dash").innerHTML=`<div class="card"><div class="sub">NEXT PAYDAY · ${fmtD(T.nextPayday)}</div><div class="big">${money(T.nextPay.g)}</div>
+  <div class="sub">expected gross${netLine(T.nextPay.g)} · ${T.nextPay.n} shift(s), ${hrs(T.nextPay.h)}<br>worked so far: ${money(T.nextPayWorked.g)}</div></div>
+  <div class="grid">
+  <div class="stat"><span>This period (${T.periodInfo.start.slice(5)}–${T.periodInfo.end.slice(5)})</span><b>${money(T.period.g)}</b><span>${hrs(T.period.h)} · ${T.period.n} games</span></div>
+  <div class="stat"><span>This month</span><b>${money(T.month.g)}</b><span>${hrs(T.month.h)} · ${T.month.n} games</span></div>
+  <div class="stat"><span>Season to date</span><b>${money(T.season.g)}</b><span>${hrs(T.season.h)} · ${T.season.n} games</span></div>
+  <div class="stat"><span>All-time</span><b>${money(T.all.g)}</b><span>${hrs(T.all.h)} · ${T.all.n} games</span></div>
+  <div class="stat"><span>Upcoming</span><b>${T.upcoming.n}</b><span>${hrs(T.upcoming.h)} · ${money(T.upcoming.g)}</span></div>
+  <div class="stat"><span>Rate</span><b>${money(+set.rate)}/h</b><span>before tax${+set.tax?` · ${set.tax}% est. tax`:""}</span></div></div>
+  <h2>By position (worked)</h2><div class="card">${pos}</div>`;
+ }
+ if(view=="shifts"){
+  const list=shifts.filter(s=>filt=="all"||(filt=="worked")==(s.status=="worked")).sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start)*(filt=="upcoming"?1:-1));
+  $("#v-shifts").innerHTML=`<div class="row"><button data-f="upcoming">Upcoming</button><button data-f="worked">Worked</button><button data-f="all">All</button></div>`+
+  list.map(s=>`<div class="sh ${s.status=="worked"?"w":"u"}"><div class="row"><b style="flex:3">${s.away} @ ${s.home}</b><b style="text-align:right">${money(grossOf(s,set))}</b></div>
+  <div class="sub" style="text-align:left">${fmtD(s.date)} ${t12(s.start)} · ${s.position} · ${s.mode} · ${hrs(hoursOf(s))}</div>
+  ${s.confirm?'<div class="flag">⚠ hours estimated – confirm</div>':""}${s.notes?`<div class="sub" style="text-align:left">${s.notes.replace(/</g,"&lt;")}</div>`:""}
+  <div class="row" style="margin-top:6px">${s.status!="worked"?`<button class="pri" data-w="${s.id}">Mark worked</button>`:`<button data-u="${s.id}">Undo worked</button>`}<button data-e="${s.id}">Edit</button></div></div>`).join("")||'<div class="sub card">Nothing here</div>';
+  document.querySelectorAll("[data-f]").forEach(b=>{b.classList.toggle("on",b.dataset.f==filt);b.onclick=()=>{filt=b.dataset.f;render()}});
+  document.querySelectorAll("[data-w]").forEach(b=>b.onclick=()=>{const s=shifts.find(x=>x.id==b.dataset.w);s.status="worked";save();editId=s.id;if(s.confirm)show("form");else render()});
+  document.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>{shifts.find(x=>x.id==b.dataset.u).status="upcoming";save();render()});
+  document.querySelectorAll("[data-e]").forEach(b=>b.onclick=()=>{editId=b.dataset.e;show("form")});
+ }
+ if(view=="form"){
+  const s=shifts.find(x=>x.id==editId)||{date:today(),away:"",home:"",position:set.positions[0],mode:"Remote",start:"",end:"",hours:"",status:"upcoming",confirm:false,notes:""};
+  const opt=(arr,v)=>arr.map(a=>`<option ${a==v?"selected":""}>${a}</option>`).join("");
+  $("#v-form").innerHTML=`<h2>${editId?"Edit":"Log"} shift</h2><div class="card">
+  <label>Date</label><input type="date" id="f-date" value="${s.date}">
+  <div class="row"><div><label>Away</label><select id="f-away"><option value="">—</option>${opt(TEAMS,s.away)}</select></div><b style="flex:0;padding-top:20px">@</b><div><label>Home</label><select id="f-home"><option value="">—</option>${opt(TEAMS,s.home)}</select></div></div>
+  <label>Position</label><select id="f-pos">${opt(set.positions,s.position)}</select>
+  <label>Location</label><div class="row"><button id="m-r" class="${s.mode=="Remote"?"on":""}">Remote</button><button id="m-i" class="${s.mode!="Remote"?"on":""}">In-person</button></div>
+  <div class="row"><div><label>Start</label><input type="time" id="f-start" value="${s.start}"></div><div><label>End</label><input type="time" id="f-end" value="${s.end}"></div></div>
+  <label>Hours worked (overrides start/end)</label><input type="number" step="0.25" inputmode="decimal" id="f-hours" value="${s.hours}">
+  <label>Status</label><div class="row"><button id="s-u" class="${s.status!="worked"?"on":""}">Upcoming</button><button id="s-w" class="${s.status=="worked"?"on":""}">Worked</button></div>
+  <label><input type="checkbox" id="f-conf" style="width:auto;min-height:0" ${s.confirm?"checked":""}> Hours need confirming</label>
+  <label>Notes</label><textarea id="f-notes">${(s.notes||"").replace(/</g,"&lt;")}</textarea>
+  <div class="sub" id="f-calc"></div>
+  <div class="row" style="margin-top:10px"><button class="pri" id="f-save">Save</button>${editId?'<button class="dng" id="f-del">Delete</button>':""}</div></div>`;
+  let mode=s.mode,st=s.status;
+  const calc=()=>{const h=hoursOf({hours:$("#f-hours").value,start:$("#f-start").value,end:$("#f-end").value});$("#f-calc").textContent=`${hrs(h)} × ${money(+set.rate)} = ${money(h*set.rate)} gross${netLine(h*set.rate)}`};
+  ["#f-hours","#f-start","#f-end"].forEach(i=>$(i).oninput=calc);calc();
+  $("#m-r").onclick=()=>{mode="Remote";$("#m-r").classList.add("on");$("#m-i").classList.remove("on")};
+  $("#m-i").onclick=()=>{mode="In-person";$("#m-i").classList.add("on");$("#m-r").classList.remove("on")};
+  $("#s-u").onclick=()=>{st="upcoming";$("#s-u").classList.add("on");$("#s-w").classList.remove("on")};
+  $("#s-w").onclick=()=>{st="worked";$("#s-w").classList.add("on");$("#s-u").classList.remove("on")};
+  $("#f-save").onclick=()=>{const o={id:s.id||("s"+Date.now()),date:$("#f-date").value,away:$("#f-away").value,home:$("#f-home").value,position:$("#f-pos").value,mode,start:$("#f-start").value,end:$("#f-end").value,hours:$("#f-hours").value,status:st,confirm:$("#f-conf").checked,notes:$("#f-notes").value};
+   if(!o.date)return alert("Date required");const i=shifts.findIndex(x=>x.id==o.id);i>=0?shifts[i]=o:shifts.push(o);save();filt=st;show("shifts")};
+  if(editId)$("#f-del").onclick=()=>{if(confirm("Delete this shift?")){shifts=shifts.filter(x=>x.id!=editId);save();show("shifts")}};
+ }
+ if(view=="pay"){
+  const map={};for(const s of shifts){const p=periodFor(s.date,set).payday;(map[p]=map[p]||[]).push(s)}
+  Object.keys(pays).forEach(p=>map[p]=map[p]||[]);
+  $("#v-pay").innerHTML=`<h2>Paydays</h2>`+Object.keys(map).sort().reverse().map(p=>{const w=sum(map[p],set,s=>s.status=="worked"),a=sum(map[p],set,()=>true),r=pays[p];
+   return `<div class="sh ${r?"w":"u"}"><div class="row"><b style="flex:2">${fmtD(p)}</b><b style="text-align:right">${money(a.g)}</b></div>
+   <div class="sub" style="text-align:left">${a.n} shift(s) · ${hrs(a.h)} · worked ${money(w.g)}${netLine(a.g)}</div>
+   ${r?`<div style="color:var(--grn)">Received ${money(+r.amount)} · diff vs gross ${money(+r.amount-a.g)}${+set.tax?` · vs est. net ${money(+r.amount-net(a.g))}`:""}</div>`:""}
+   <div class="row" style="margin-top:6px"><input type="number" step="0.01" inputmode="decimal" placeholder="Actual amount" data-amt="${p}" value="${r?r.amount:""}"><button class="pri" data-rcv="${p}">${r?"Update":"Mark received"}</button>${r?`<button data-clr="${p}">Clear</button>`:""}</div></div>`}).join("");
+  document.querySelectorAll("[data-rcv]").forEach(b=>b.onclick=()=>{const v=document.querySelector(`[data-amt="${b.dataset.rcv}"]`).value;if(v==="")return alert("Enter amount");pays[b.dataset.rcv]={amount:+v,at:today()};save();render()});
+  document.querySelectorAll("[data-clr]").forEach(b=>b.onclick=()=>{delete pays[b.dataset.clr];save();render()});
+ }
+ if(view=="set"){
+  $("#v-set").innerHTML=`<h2>Settings</h2><div class="card">
+  <label>Hourly rate ($)</label><input type="number" step="0.01" id="c-rate" value="${set.rate}">
+  <label>Estimated tax % (0 = off)</label><input type="number" step="0.5" id="c-tax" value="${set.tax}">
+  <label>Pay period split: shifts on day 1–N paid on the 15th; N+1–end paid on the 30th (last day in Feb)</label><input type="number" min="1" max="28" id="c-split" value="${set.split}">
+  <div class="row"><div><label>Season start month</label><input type="number" min="1" max="12" id="c-ss" value="${set.seasonStart}"></div><div><label>Season end month</label><input type="number" min="1" max="12" id="c-se" value="${set.seasonEnd}"></div></div>
+  <label>Positions (comma separated)</label><input id="c-pos" value="${set.positions.join(", ")}">
+  <button class="pri" id="c-save" style="width:100%;margin-top:10px">Save settings</button></div>
+  <h2>Backup</h2><div class="card"><div class="row"><button id="b-exp">Export CSV</button><button id="b-imp">Import CSV</button></div>
+  <input type="file" id="b-file" accept=".csv,text/csv" class="hide"><div class="sub" style="margin-top:6px">Import merges by id (replaces matching shifts).</div></div>`;
+  $("#c-save").onclick=()=>{set.rate=+$("#c-rate").value||29;set.tax=+$("#c-tax").value||0;set.split=Math.min(28,Math.max(1,+$("#c-split").value||15));set.seasonStart=+$("#c-ss").value||10;set.seasonEnd=+$("#c-se").value||6;
+   set.positions=$("#c-pos").value.split(",").map(x=>x.trim()).filter(Boolean);save();alert("Saved")};
+  $("#b-exp").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([toCSV(shifts)],{type:"text/csv"}));a.download="gigs-"+today()+".csv";a.click()};
+  $("#b-imp").onclick=()=>$("#b-file").click();
+  $("#b-file").onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{const rows=parseCSV(t);rows.forEach(r=>{if(!r.id)r.id="s"+Date.now()+Math.random();const i=shifts.findIndex(x=>x.id==r.id);i>=0?shifts[i]=r:shifts.push(r)});save();alert(`Imported ${rows.length} shift(s)`);show("dash")})};
+ }
+}
+render();}
+</script></body></html>
