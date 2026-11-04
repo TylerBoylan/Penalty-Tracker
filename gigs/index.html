@@ -31,9 +31,9 @@ label{font-size:12px;color:var(--mut);display:block;margin:10px 2px 4px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .hl{font-size:11px;color:var(--mut);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.hl b{color:var(--tx);font-weight:600}
 .ngr{display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:8px}.ngr .lg{width:24px;height:24px}.ngr .lg img{width:24px;height:24px}
-.stat{background:var(--card);border-radius:var(--r);padding:9px 12px}.stat b{display:block;font-size:18px;margin:2px 0 1px;font-variant-numeric:tabular-nums}.stat span{font-size:11px;color:var(--mut)}
+.stt{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;cursor:pointer;margin-top:10px}.stt .chev{color:var(--mut);margin-left:4px}.stat{background:var(--card);border-radius:var(--r);padding:9px 12px}.stat b{display:block;font-size:18px;margin:2px 0 1px;font-variant-numeric:tabular-nums}.stat span{font-size:11px;color:var(--mut)}
 .flag{color:var(--yel);font-size:12px;font-weight:700;margin-top:4px}
-.ngc{padding:12px 14px;margin-bottom:8px}.ngc .match{margin:4px 0 8px}
+.ngc{padding:8px 12px;margin-bottom:6px}.ngc .match{margin:0 0 4px;gap:4px}.ngc .match .side{flex-direction:row;justify-content:center;gap:6px;font-size:14px}.ngc .at{font-size:12px}.ngc .lg.big2,.ngc .lg.big2 img{width:26px;height:26px}.ngc .lg.big2 .badge{font-size:10px}.ngc .row{gap:6px}.ngc .row>div>div:first-child{font-size:13px}.ngc .sub{font-size:11px}.ngc .pay{font-size:17px!important;line-height:1.1}.ngc .flag{font-size:11px;margin-top:2px}
 .sl{padding:4px 14px}.srow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.07);font-size:12px}.srow:last-child{border:0}.srow .sub{font-size:10px}.srow b{font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .tm{display:inline-flex;align-items:center;gap:6px;font-weight:700}
 .lg{width:28px;height:28px;display:inline-grid;place-items:center;flex:none}
@@ -217,6 +217,7 @@ function chartSVG(mode){
   if(hp)g+=`<rect x="${x}" y="${H-hw-hp}" width="${w}" height="${hp}" rx="4" fill="none" stroke="#888" stroke-dasharray="3 2"/>`;
   g+=`<text x="${x+w/2}" y="${H-hw-hp-5}" fill="#ccc" font-size="9" text-anchor="middle">${money0(d.w+d.p)}</text><text x="${x+w/2}" y="${H+14}" fill="#999" font-size="10" text-anchor="middle">${lbl(d)}</text>`});
  return g+`<rect x="${P}" y="${H+22}" width="9" height="9" rx="2" fill="#fff"/><text x="${P+14}" y="${H+30}" fill="#999" font-size="10">Worked</text><rect x="${P+70}" y="${H+22}" width="9" height="9" rx="2" fill="none" stroke="#888" stroke-dasharray="2 2"/><text x="${P+84}" y="${H+30}" fill="#999" font-size="10">Planned</text></svg>`}
+let statsOpen=false;
 function render(){
  const T=totals(shifts,set,today()),Y=ytd(shifts,set,today());
  if(view=="dash"){
@@ -225,9 +226,10 @@ function render(){
   $("#v-dash").innerHTML=`<div class="card hero"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px"><div><div class="sub" style="font-size:10px;letter-spacing:1px">NEXT PAYDAY · ${fmtD(T.nextPayday)}</div><div class="big">${money(T.nextPay.g)}</div></div><div class="sub" style="font-size:11px;text-align:right">${T.nextPay.n} shift(s) · ${hrs(T.nextPay.h)}<br>worked ${money(T.nextPayWorked.g)}</div></div>
   <div class="hl">${heroTax(T.nextPay.g)}</div><div class="sub" style="font-size:9px;opacity:.7;margin-top:1px">Estimate only, not tax advice</div></div>
   <div style="display:flex;align-items:baseline;justify-content:space-between"><h2>Upcoming games</h2>${ups.length>3?'<a href="#" id="seeall" class="sub" style="font-size:12px;color:#fff">See all ('+ups.length+') ›</a>':""}</div>${ups.length?ups.slice(0,3).map(ng=>`<div class="card ngc" data-ng="${esc(ng.id)}" style="cursor:pointer"><div class="match"><div class="side">${logo(ng.away,1)}<span>${esc(ng.away||"—")}</span></div><div class="at">@</div><div class="side">${logo(ng.home,1)}<span>${esc(ng.home||"—")}</span></div></div>
-   <div class="row"><div><div style="font-weight:600;white-space:nowrap">${fmtS(ng.date)}${ng.start?" · "+t12(ng.start):""}</div><div class="sub">${esc(ng.position)} · ${esc(ng.mode)} · ${hrs(hoursOf(ng))}</div></div><div style="text-align:right"><div style="font-size:22px;font-weight:700">${money(grossOf(ng,set))}</div><div class="sub">est. pay</div></div></div>
+   <div class="row"><div><div style="font-weight:600;white-space:nowrap">${fmtS(ng.date)}${ng.start?" · "+t12(ng.start):""}</div><div class="sub">${esc(ng.position)} · ${esc(ng.mode)} · ${hrs(hoursOf(ng))}</div></div><div style="text-align:right"><div class="pay" style="font-size:22px;font-weight:700">${money(grossOf(ng,set))}</div><div class="sub">est. pay</div></div></div>
    ${ng.confirm?'<div class="flag">⚠ hours estimated – confirm</div>':""}</div>`).join(""):'<div class="card sub">No upcoming games</div>'}
-  <div class="card sl">
+  <div class="card stt" id="stt" role="button" tabindex="0" aria-expanded="${statsOpen}"><span style="font-weight:600">Stats <span class="chev">${statsOpen?"⌄":"›"}</span></span><span class="sub">This month <b style="color:#fff">${money(T.month.g)}</b></span></div>
+  <div id="stx" style="display:${statsOpen?"block":"none"}"><div class="card sl">
   <div class="srow"><div><div>This period (${T.periodInfo.start.slice(5)}–${T.periodInfo.end.slice(5)})</div><div class="sub">${hrs(T.period.h)} · ${T.period.n} games</div></div><b>${money(T.period.g)}</b></div>
   <div class="srow"><div><div>Year to date</div><div class="sub">${hrs(Y.h)} · ${Y.n} games</div></div><b>${money(Y.g)}</b></div>
   <div class="srow"><div><div>This month</div><div class="sub">${hrs(T.month.h)} · ${T.month.n} games</div></div><b>${money(T.month.g)}</b></div>
@@ -236,7 +238,8 @@ function render(){
   <div class="srow"><div><div>YTD ${set.payType==="1099"?"to set aside":"est. taxes"}</div><div class="sub">take-home ${money(taxEst(Y.g,set).net)}</div></div><b>${money(taxEst(Y.g,set).tax)}</b></div>
   <div class="srow"><div><div>Upcoming</div><div class="sub">${hrs(T.upcoming.h)} · ${money(T.upcoming.g)}</div></div><b>${T.upcoming.n}</b></div></div>
   <div class="sub" style="text-align:center;margin-top:10px">Rate ${money(+set.rate)}/h before tax · ${+taxRate(set).toFixed(2)}% est. tax (${set.taxMode==="detailed"?"detailed":"pay stub"}, ${set.payType==="1099"?"1099":"W-2"})</div>
-  <h2>By position (worked)</h2><div class="card">${pos}</div>`;
+  <h2>By position (worked)</h2><div class="card">${pos}</div></div>`;
+  const st=$("#stt");st.onclick=()=>{statsOpen=!statsOpen;render()};st.onkeydown=e=>{if(e.key=="Enter"||e.key==" "){e.preventDefault();st.onclick()}};
   document.querySelectorAll("#v-dash [data-ng]").forEach(c=>c.onclick=()=>{editId=c.dataset.ng;show("form")});
   const sa=$("#seeall");if(sa)sa.onclick=e=>{e.preventDefault();filt="upcoming";show("shifts")};
  }
