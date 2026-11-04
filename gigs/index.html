@@ -82,7 +82,7 @@ nav button.add svg{width:34px;height:34px;color:#fff}
 <script>
 /*LOGIC-START*/
 const TEAMS=["ANA","BOS","BUF","CAR","CBJ","CGY","CHI","COL","DAL","DET","EDM","FLA","LAK","MIN","MTL","NJD","NSH","NYI","NYR","OTT","PHI","PIT","SEA","SJS","STL","TBL","TOR","UTA","VAN","VGK","WPG","WSH"];
-const DEF_SET={rate:29,tax:0,split:15,seasonStart:10,seasonEnd:6,positions:["SAV","EA","Scorer","Spotter","Other"]};
+const DEF_SET={rate:29,tax:0,taxMode:"stub",stubRate:14.26,payType:"W2",fedRate:12,fica:true,paRate:3.07,localRate:1,split:15,seasonStart:10,seasonEnd:6,positions:["SAV","EA","Scorer","Spotter","Other"]};
 const pad=n=>String(n).padStart(2,"0");
 const ymd=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
 const parseD=s=>{const[a,b,c]=s.split("-").map(Number);return new Date(a,b-1,c)};
@@ -146,12 +146,15 @@ function mergeSchedule(shifts,imported,games){shifts=shifts.slice();imported=imp
  for(const g of games||[]){if(!g||!g.id||imported.includes(g.id))continue;imported.push(g.id);
   if(shifts.some(s=>s.id===g.id||(s.date===g.date&&s.home===g.home&&s.away===g.away)))continue;shifts.push(gameToShift(g));added++}
  return{shifts,imported,added}}
-if(typeof module!=="undefined")module.exports={periodFor,nextPayday,hoursOf,grossOf,totals,seasonRange,toCSV,parseCSV,DEF_SET,TEAMS,TEAM_NAMES,logoURL,ytd,series,nextGame,mergeSchedule,gameToShift,posFor};
+function taxRate(set){const n=k=>+set[k]||0;if(set.taxMode!=="detailed")return n("stubRate");
+ const fica=set.fica===false?0:(set.payType==="1099"?15.3*0.9235:7.65);return n("fedRate")+n("paRate")+n("localRate")+fica}
+function taxEst(g,set){const t=Math.round(g*taxRate(set))/100;return{gross:g,tax:t,net:Math.round((g-t)*100)/100}}
+if(typeof module!=="undefined")module.exports={taxRate,taxEst,periodFor,nextPayday,hoursOf,grossOf,totals,seasonRange,toCSV,parseCSV,DEF_SET,TEAMS,TEAM_NAMES,logoURL,ytd,series,nextGame,mergeSchedule,gameToShift,posFor};
 /*LOGIC-END*/
 if(typeof document!=="undefined"){
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s),money=n=>"$"+n.toFixed(2),money0=n=>"$"+Math.round(n).toLocaleString(),hrs=n=>(Math.round(n*100)/100)+"h";
 const esc=v=>String(v==null?"":v).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-let set=Object.assign({},DEF_SET,JSON.parse(localStorage.getItem("gt_set")||"{}"));
+let set=(()=>{const st=JSON.parse(localStorage.getItem("gt_set")||"{}");if(st.stubRate==null&&+st.tax>0)st.stubRate=+st.tax;return Object.assign({},DEF_SET,st)})();
 let shifts=JSON.parse(localStorage.getItem("gt_shifts")||"null");
 let pays=JSON.parse(localStorage.getItem("gt_pays")||"{}");
 if(!shifts){shifts=[
@@ -159,7 +162,7 @@ if(!shifts){shifts=[
  {id:"s2",date:"2026-11-08",away:"VGK",home:"BUF",position:"EA",mode:"Remote",start:"15:30",end:"",hours:"3",status:"upcoming",confirm:true,notes:"3:30 PM start. Hours estimated – confirm"}];}
 let imported=JSON.parse(localStorage.getItem("gt_imported")||"[]");
 const save=()=>{localStorage.setItem("gt_imported",JSON.stringify(imported));localStorage.setItem("gt_shifts",JSON.stringify(shifts));localStorage.setItem("gt_set",JSON.stringify(set));localStorage.setItem("gt_pays",JSON.stringify(pays))};save();
-const today=()=>window.__TODAY__||ymd(new Date()),net=g=>g*(1-(+set.tax||0)/100);
+const today=()=>window.__TODAY__||ymd(new Date()),net=g=>taxEst(g,set).net;
 const fmtD=s=>parseD(s).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric",year:"numeric"});
 const fmtS=s=>parseD(s).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
 const t12=t=>{if(!t)return"";let[h,m]=t.split(":").map(Number);return(h%12||12)+":"+pad(m)+(h<12?" AM":" PM")};
@@ -172,7 +175,9 @@ function show(v){view=v;$$(".view").forEach(e=>e.classList.add("hide"));const el
  $("#ttl").textContent=TITLES[v];$$("nav button").forEach(b=>b.classList.toggle("on",b.dataset.v==v&&v!="form"));render();scrollTo(0,0)}
 $$("nav button").forEach(b=>b.onclick=()=>{if(b.dataset.v=="form")editId=null;show(b.dataset.v)});
 $("#gear").onclick=()=>show("set");
-const netLine=g=>+set.tax?` · est. net ${money(net(g))}`:"";
+const netLine=g=>"",aside=()=>set.payType==="1099"?"Set aside":"Est. taxes",
+ taxBox=g=>{const e=taxEst(g,set);return `<div class="row taxbox" style="margin-top:8px;font-size:13px;text-align:center"><div><div class="sub">Gross</div><b>${money(e.gross)}</b></div><div><div class="sub">${aside()} (${+taxRate(set).toFixed(2)}%)</div><b>−${money(e.tax)}</b></div><div><div class="sub">Est. take-home</div><b>${money(e.net)}</b></div></div>`},
+ DISC='<div class="sub" style="text-align:center;font-size:11px;margin-top:6px">Estimate only, not tax advice</div>';
 // shift row with swipe-left to reveal Edit/Delete; tap the row toggles it too
 function shiftRow(s){return `<div class="swr" data-id="${esc(s.id)}"><div class="swa"><button class="ed" data-e="${esc(s.id)}">Edit</button><button class="dl" data-d="${esc(s.id)}">Delete</button></div>
  <div class="swf ${s.status=="worked"?"w":"u"}" role="button" tabindex="0" aria-label="Shift actions"><div class="row"><div style="flex:3">${matchup(s)}</div><b style="text-align:right;flex:1">${money(grossOf(s,set))}</b></div>
@@ -214,7 +219,7 @@ function render(){
   const pos=Object.entries(T.byPos).map(([k,v])=>`<div class="row" style="padding:6px 0"><span>${esc(k)}</span><span class="sub">${v.n} · ${hrs(v.h)}</span><span style="text-align:right">${money(v.g)}</span></div>`).join("")||'<div class="sub">No worked shifts yet</div>';
   $("#v-dash").innerHTML=`<div class="card hero"><div class="sub">NEXT PAYDAY</div><div class="big">${money(T.nextPay.g)}</div>
   <div style="font-weight:600;margin-top:4px">${fmtD(T.nextPayday)}</div>
-  <div class="sub" style="margin-top:6px">expected gross${netLine(T.nextPay.g)} · ${T.nextPay.n} shift(s), ${hrs(T.nextPay.h)} · worked so far ${money(T.nextPayWorked.g)}</div></div>
+  <div class="sub" style="margin-top:6px">expected gross${netLine(T.nextPay.g)} · ${T.nextPay.n} shift(s), ${hrs(T.nextPay.h)} · worked so far ${money(T.nextPayWorked.g)}</div>${taxBox(T.nextPay.g)}${DISC}</div>
   <h2>Next game</h2>${ng?`<div class="card" id="ngc" style="cursor:pointer"><div class="match"><div class="side">${logo(ng.away,1)}<span>${esc(ng.away||"—")}</span></div><div class="at">@</div><div class="side">${logo(ng.home,1)}<span>${esc(ng.home||"—")}</span></div></div>
    <div class="row"><div><div style="font-weight:600">${fmtS(ng.date)}${ng.start?" · "+t12(ng.start):""}</div><div class="sub">${esc(ng.position)} · ${esc(ng.mode)} · ${hrs(hoursOf(ng))}</div></div><div style="text-align:right"><div style="font-size:22px;font-weight:700">${money(grossOf(ng,set))}</div><div class="sub">est. pay</div></div></div>
    ${ng.confirm?'<div class="flag">⚠ hours estimated – confirm</div>':""}</div>`:'<div class="card sub">No upcoming games</div>'}
@@ -224,8 +229,9 @@ function render(){
   <div class="stat"><span>This month</span><b>${money(T.month.g)}</b><span>${hrs(T.month.h)} · ${T.month.n} games</span></div>
   <div class="stat"><span>Season to date</span><b>${money(T.season.g)}</b><span>${hrs(T.season.h)} · ${T.season.n} games</span></div>
   <div class="stat"><span>All-time</span><b>${money(T.all.g)}</b><span>${hrs(T.all.h)} · ${T.all.n} games</span></div>
+  <div class="stat"><span>YTD ${set.payType==="1099"?"to set aside":"est. taxes"}</span><b>${money(taxEst(Y.g,set).tax)}</b><span>take-home ${money(taxEst(Y.g,set).net)}</span></div>
   <div class="stat"><span>Upcoming</span><b>${T.upcoming.n}</b><span>${hrs(T.upcoming.h)} · ${money(T.upcoming.g)}</span></div></div>
-  <div class="sub" style="text-align:center;margin-top:10px">Rate ${money(+set.rate)}/h before tax${+set.tax?` · ${set.tax}% est. tax`:""}</div>
+  <div class="sub" style="text-align:center;margin-top:10px">Rate ${money(+set.rate)}/h before tax · ${+taxRate(set).toFixed(2)}% est. tax (${set.taxMode==="detailed"?"detailed":"pay stub"}, ${set.payType==="1099"?"1099":"W-2"})</div>
   <h2>By position (worked)</h2><div class="card">${pos}</div>`;
   if(ng)$("#ngc").onclick=()=>{editId=ng.id;show("form")};
  }
@@ -280,10 +286,10 @@ function render(){
  if(view=="pay"){
   const map={};for(const s of shifts){const p=periodFor(s.date,set).payday;(map[p]=map[p]||[]).push(s)}
   Object.keys(pays).forEach(p=>map[p]=map[p]||[]);
-  $("#v-pay").innerHTML=`<div class="card chart"><div class="seg"><button data-cm="period">Per pay period</button><button data-cm="month">Per month</button></div>${chartSVG(chartMode)}</div><h2>Paydays</h2>`+Object.keys(map).sort().reverse().map(p=>{const w=sum(map[p],set,s=>s.status=="worked"),a=sum(map[p],set,()=>true),r=pays[p];
+  $("#v-pay").innerHTML=`<div class="card chart"><div class="seg"><button data-cm="period">Per pay period</button><button data-cm="month">Per month</button></div>${chartSVG(chartMode)}</div><h2>Paydays</h2>${DISC}`+Object.keys(map).sort().reverse().map(p=>{const w=sum(map[p],set,s=>s.status=="worked"),a=sum(map[p],set,()=>true),r=pays[p];
    return `<div class="card" style="border-left:4px solid ${r?"#fff":"#555"}"><div class="row"><b style="flex:2">${fmtD(p)}</b><b style="text-align:right">${money(a.g)}</b></div>
-   <div class="sub" style="margin-top:4px">${a.n} shift(s) · ${hrs(a.h)} · worked ${money(w.g)}${netLine(a.g)}</div>
-   ${r?`<div style="color:var(--grn);margin-top:4px">Received ${money(+r.amount)} · diff vs gross ${money(+r.amount-a.g)}${+set.tax?` · vs est. net ${money(+r.amount-net(a.g))}`:""}</div>`:""}
+   <div class="sub" style="margin-top:4px">${a.n} shift(s) · ${hrs(a.h)} · worked ${money(w.g)}${netLine(a.g)}</div>${taxBox(a.g)}
+   ${r?`<div style="color:var(--grn);margin-top:4px">Received ${money(+r.amount)} · diff vs gross ${money(+r.amount-a.g)} · vs est. take-home ${money(+r.amount-net(a.g))}</div>`:""}
    <div class="row" style="margin-top:10px"><input type="number" step="0.01" inputmode="decimal" placeholder="Actual amount" data-amt="${p}" value="${r?r.amount:""}"><button class="pri" data-rcv="${p}">${r?"Update":"Mark received"}</button>${r?`<button data-clr="${p}">Clear</button>`:""}</div></div>`}).join("");
   $$("[data-cm]").forEach(b=>{b.classList.toggle("on",b.dataset.cm==chartMode);b.onclick=()=>{chartMode=b.dataset.cm;render()}});
   $$("[data-rcv]").forEach(b=>b.onclick=()=>{const v=document.querySelector(`[data-amt="${b.dataset.rcv}"]`).value;if(v==="")return alert("Enter amount");pays[b.dataset.rcv]={amount:+v,at:today()};save();render()});
@@ -292,17 +298,28 @@ function render(){
  if(view=="set"){
   $("#v-set").innerHTML=`<div class="card">
   <label>Hourly rate ($)</label><input type="number" step="0.01" id="c-rate" value="${set.rate}">
-  <label>Estimated tax % (0 = off)</label><input type="number" step="0.5" id="c-tax" value="${set.tax}">
   <label>Pay period split: shifts on day 1–N paid on the 15th; N+1–end paid on the 30th (last day in Feb)</label><input type="number" min="1" max="28" id="c-split" value="${set.split}">
   <div class="row"><div><label>Season start month</label><input type="number" min="1" max="12" id="c-ss" value="${set.seasonStart}"></div><div><label>Season end month</label><input type="number" min="1" max="12" id="c-se" value="${set.seasonEnd}"></div></div>
   <label>Positions (comma separated)</label><input id="c-pos" value="${esc(set.positions.join(", "))}">
+  <h2 style="margin:16px 0 4px">Taxes</h2>
+  <label>Pay type</label><div class="row"><button id="t-w2" class="${set.payType!="1099"?"on":""}">W-2 (taxes withheld)</button><button id="t-99" class="${set.payType=="1099"?"on":""}">1099 (set aside yourself)</button></div>
+  <label>Estimate method</label><div class="row"><button id="t-stub" class="${set.taxMode!="detailed"?"on":""}">Pay stub rate</button><button id="t-det" class="${set.taxMode=="detailed"?"on":""}">Detailed</button></div>
+  <div id="t-stubf" class="${set.taxMode=="detailed"?"hide":""}"><label>Withholding rate from my pay stub (%) – based on your actual paycheck ($96.17 of $674.25)</label><input type="number" step="0.01" id="c-stub" value="${set.stubRate}"></div>
+  <div id="t-detf" class="${set.taxMode!="detailed"?"hide":""}"><label>Federal rate % (marginal – income stacks on your full-time job)</label><input type="number" step="0.5" id="c-fed" value="${set.fedRate}">
+  <label><input type="checkbox" id="c-fica" style="width:auto;min-height:0" ${set.fica!==false?"checked":""}> Social Security + Medicare (7.65% W-2; 1099: 15.3% on 92.35%)</label>
+  <label>PA state %</label><input type="number" step="0.01" id="c-pa" value="${set.paRate}">
+  <label>Local Earned Income Tax % (varies by municipality, e.g. Philadelphia ~3.74%)</label><input type="number" step="0.01" id="c-loc" value="${set.localRate}"></div>
+  <div class="sub" style="margin-top:6px">Estimate only, not tax advice.</div>
   <button class="pri" id="c-save" style="width:100%;margin-top:14px">Save settings</button></div>
   <h2>Schedule</h2><div class="card"><button id="b-sync" style="width:100%">Sync schedule</button><div class="sub" id="sync-at" style="margin-top:8px">Last sync: ${set.lastSync?new Date(set.lastSync).toLocaleString():"never"}</div></div>
   <h2>Backup</h2><div class="card"><div class="row"><button id="b-exp">Export CSV</button><button id="b-imp">Import CSV</button></div>
   <input type="file" id="b-file" accept=".csv,text/csv" class="hide"><div class="sub" style="margin-top:8px">Import merges by id (replaces matching shifts).</div></div>`;
-  $("#c-save").onclick=()=>{set.rate=+$("#c-rate").value||29;set.tax=+$("#c-tax").value||0;set.split=Math.min(28,Math.max(1,+$("#c-split").value||15));set.seasonStart=+$("#c-ss").value||10;set.seasonEnd=+$("#c-se").value||6;
+  $("#c-save").onclick=()=>{set.rate=+$("#c-rate").value||29;const nv=(id,d)=>{const v=$(id).value;return v===""||isNaN(+v)?d:+v};set.payType=$("#t-99").classList.contains("on")?"1099":"W2";set.taxMode=$("#t-det").classList.contains("on")?"detailed":"stub";
+   set.stubRate=nv("#c-stub",14.26);set.fedRate=nv("#c-fed",12);set.fica=$("#c-fica").checked;set.paRate=nv("#c-pa",3.07);set.localRate=nv("#c-loc",1);set.split=Math.min(28,Math.max(1,+$("#c-split").value||15));set.seasonStart=+$("#c-ss").value||10;set.seasonEnd=+$("#c-se").value||6;
    set.positions=$("#c-pos").value.split(",").map(x=>x.trim()).filter(Boolean);save();alert("Saved")};
   $("#b-exp").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([toCSV(shifts)],{type:"text/csv"}));a.download="gigs-"+today()+".csv";a.click()};
+  const tg=(a,b,f)=>{$(a).onclick=()=>{$(a).classList.add("on");$(b).classList.remove("on");f&&f()}};
+  tg("#t-w2","#t-99");tg("#t-99","#t-w2");tg("#t-stub","#t-det",()=>{$("#t-stubf").classList.remove("hide");$("#t-detf").classList.add("hide")});tg("#t-det","#t-stub",()=>{$("#t-detf").classList.remove("hide");$("#t-stubf").classList.add("hide")});
   $("#b-sync").onclick=()=>syncSchedule(true);
   $("#b-imp").onclick=()=>$("#b-file").click();
   $("#b-file").onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{const rows=parseCSV(t);rows.forEach(r=>{if(!r.id)r.id="s"+Date.now()+Math.random();const i=shifts.findIndex(x=>x.id==r.id);i>=0?shifts[i]=r:shifts.push(r)});save();alert(`Imported ${rows.length} shift(s)`);show("dash")})};
