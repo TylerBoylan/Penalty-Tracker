@@ -2,25 +2,25 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Penalties">
-<meta name="theme-color" content="#0a1630"><title>Penalty Tracker</title>
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%230a1630'/%3E%3Ctext x='90' y='120' font-size='90' text-anchor='middle' fill='%2300e5ff' font-family='Arial' font-weight='bold'%3EPT%3C/text%3E%3C/svg%3E">
+<meta name="theme-color" content="#000000"><title>Penalty Tracker</title>
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%23000000'/%3E%3Ctext x='90' y='120' font-size='90' text-anchor='middle' fill='%23ffffff' font-family='Arial' font-weight='bold'%3EPT%3C/text%3E%3C/svg%3E">
 <style>
-:root{--bg:#0a1630;--card:#12224a;--line:#1f3570;--cy:#00e5ff;--tx:#e8f4ff;--mut:#8aa0c8;--red:#ff4d5e;--yel:#ffc93c;--gry:#5b6782}
+:root{--bg:#000000;--card:#111111;--line:#444444;--cy:#ffffff;--tx:#ffffff;--mut:#aaaaaa;--red:#ffffff;--yel:#d0d0d0;--gry:#555555}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 10px calc(env(safe-area-inset-bottom) + 20px)}
 h2{font-size:15px;color:var(--cy);margin:14px 4px 6px;text-transform:uppercase;letter-spacing:1px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;margin-bottom:10px}
 button{font:inherit;font-weight:600;border:0;border-radius:12px;min-height:48px;padding:0 12px;background:var(--line);color:var(--tx)}
-button.pri{background:var(--cy);color:#04122b}button.on{background:var(--cy);color:#04122b}button.dng{background:#5a1a26}
+button.pri{background:var(--cy);color:#000000}button.on{background:var(--cy);color:#000000}button.dng{background:#333333}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1}
 .clock{font-size:54px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums;color:var(--cy)}
 .str{font-size:30px;font-weight:800;text-align:center}.sub{color:var(--mut);font-size:13px;text-align:center}
-input,select{font:inherit;font-size:18px;width:100%;min-height:48px;border-radius:10px;border:1px solid var(--line);background:#0b1838;color:var(--tx);padding:0 10px}
+input,select{font:inherit;font-size:18px;width:100%;min-height:48px;border-radius:10px;border:1px solid var(--line);background:#0a0a0a;color:var(--tx);padding:0 10px}
 label{font-size:12px;color:var(--mut);display:block;margin:6px 2px 2px}
 .kp{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.kp button{min-height:54px;font-size:22px}
 .tdisp{font-size:34px;text-align:center;font-weight:800;font-variant-numeric:tabular-nums}
-.pen{border-left:6px solid var(--gry);padding:8px;margin:6px 0;background:#0e1c40;border-radius:10px}
-.pen.inbox{border-color:var(--red)}.pen.pending{border-color:var(--yel)}.pen.rel{opacity:.55}
+.pen{border-left:6px solid var(--gry);padding:8px;margin:6px 0;background:#161616;border-radius:10px}
+.pen.inbox{border-color:var(--red);font-weight:700}.pen.pending{border-color:var(--yel)}.pen.rel{opacity:.55}
 .pen .t{display:flex;justify-content:space-between;font-weight:700}.pen .m{font-size:13px;color:var(--mut)}
 .pen .a{display:flex;gap:6px;margin-top:6px}.pen .a button{min-height:38px;font-size:13px;flex:1}
 .tag{font-size:11px;padding:2px 6px;border-radius:6px;background:var(--line)}
