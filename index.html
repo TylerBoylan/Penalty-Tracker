@@ -1,0 +1,164 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Penalties">
+<meta name="theme-color" content="#0a1630"><title>Penalty Tracker</title>
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%230a1630'/%3E%3Ctext x='90' y='120' font-size='90' text-anchor='middle' fill='%2300e5ff' font-family='Arial' font-weight='bold'%3EPT%3C/text%3E%3C/svg%3E">
+<style>
+:root{--bg:#0a1630;--card:#12224a;--line:#1f3570;--cy:#00e5ff;--tx:#e8f4ff;--mut:#8aa0c8;--red:#ff4d5e;--yel:#ffc93c;--gry:#5b6782}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:-apple-system,system-ui,sans-serif;padding:env(safe-area-inset-top) 10px calc(env(safe-area-inset-bottom) + 20px)}
+h2{font-size:15px;color:var(--cy);margin:14px 4px 6px;text-transform:uppercase;letter-spacing:1px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px;margin-bottom:10px}
+button{font:inherit;font-weight:600;border:0;border-radius:12px;min-height:48px;padding:0 12px;background:var(--line);color:var(--tx)}
+button.pri{background:var(--cy);color:#04122b}button.on{background:var(--cy);color:#04122b}button.dng{background:#5a1a26}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1}
+.clock{font-size:54px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums;color:var(--cy)}
+.str{font-size:30px;font-weight:800;text-align:center}.sub{color:var(--mut);font-size:13px;text-align:center}
+input,select{font:inherit;font-size:18px;width:100%;min-height:48px;border-radius:10px;border:1px solid var(--line);background:#0b1838;color:var(--tx);padding:0 10px}
+label{font-size:12px;color:var(--mut);display:block;margin:6px 2px 2px}
+.kp{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}.kp button{min-height:54px;font-size:22px}
+.tdisp{font-size:34px;text-align:center;font-weight:800;font-variant-numeric:tabular-nums}
+.pen{border-left:6px solid var(--gry);padding:8px;margin:6px 0;background:#0e1c40;border-radius:10px}
+.pen.inbox{border-color:var(--red)}.pen.pending{border-color:var(--yel)}.pen.rel{opacity:.55}
+.pen .t{display:flex;justify-content:space-between;font-weight:700}.pen .m{font-size:13px;color:var(--mut)}
+.pen .a{display:flex;gap:6px;margin-top:6px}.pen .a button{min-height:38px;font-size:13px;flex:1}
+.tag{font-size:11px;padding:2px 6px;border-radius:6px;background:var(--line)}
+.q{display:flex;justify-content:space-between;padding:6px 2px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+</style></head><body>
+<div class="card">
+ <div class="row"><button id="pm">P −</button><div style="text-align:center;font-size:22px;font-weight:800" id="pl">P1</div><button id="pp">P +</button></div>
+ <div class="clock" id="clk" onclick="editClock()">0:00</div>
+ <div class="row"><button onclick="adj(-60)">−1m</button><button onclick="adj(-10)">−10</button><button onclick="adj(-1)">−1</button><button onclick="adj(1)">+1</button><button onclick="adj(10)">+10</button><button onclick="adj(60)">+1m</button></div>
+ <div class="row" style="margin-top:8px"><button id="run" class="pri" onclick="toggleRun()">▶ Start</button><button id="gt" onclick="toggleType()">Regular season</button></div>
+</div>
+<div class="card"><div class="str" id="str">5 on 5</div><div class="sub" id="strsub"></div>
+ <div class="row" style="margin-top:8px"><button onclick="ppGoal('H')">PP goal HOME</button><button onclick="ppGoal('A')">PP goal AWAY</button></div></div>
+<h2>Release queue</h2><div class="card" id="queue"></div>
+<h2 id="ftitle">Add penalty</h2><div class="card" id="form">
+ <div class="row"><div><label>Period</label><select id="fp"></select></div><div><label>Team</label><div class="row"><button id="fH" class="on" onclick="setTeam('H')">Home</button><button id="fA" onclick="setTeam('A')">Away</button></div></div></div>
+ <label>Elapsed time (MM:SS) <a style="color:var(--cy)" onclick="useNow()">use clock</a></label>
+ <div class="tdisp" id="ftd">0:00</div>
+ <div class="kp" id="kp"></div>
+ <div class="row"><div><label>Player #</label><input id="fn" inputmode="numeric"></div><div><label>Name (opt)</label><input id="fnm"></div></div>
+ <label>Infraction</label><select id="fi"></select>
+ <label>Type</label><select id="ft"></select>
+ <div class="row" style="margin-top:8px"><button id="fo" onclick="tOff()">Offsetting: OFF</button></div>
+ <div class="row" style="margin-top:8px"><button class="pri" onclick="savePen()" id="fsave">Add penalty</button><button onclick="resetForm()">Clear</button></div>
+</div>
+<h2>Penalties</h2><div id="list"></div>
+<div class="row" style="margin-top:12px"><button onclick="exportCSV()">Export CSV</button><button class="dng" onclick="newGame()">New game</button></div>
+<script id="logic">
+const TYPES={MIN:{l:'Minor (2)',d:120,str:1,early:1},DBL:{l:'Double minor (4)',d:240,str:1,early:1},MAJ:{l:'Major (5)',d:300,str:1},MIS:{l:'Misconduct (10)',d:600,str:0},GM:{l:'Game misconduct',d:0,str:0},MAT:{l:'Match (5 served)',d:300,str:1},BEN:{l:'Bench minor (2)',d:120,str:1,early:1}};
+const INFR=['Tripping','Hooking','Slashing','Holding','Holding the stick','Interference','Roughing','High-sticking','Cross-checking','Boarding','Charging','Elbowing','Kneeing','Delay of game','Delay of game (puck over glass)','Too many men','Unsportsmanlike conduct','Embellishment','Goaltender interference','Fighting','Spearing','Butt-ending','Head-butting','Illegal check to the head','Checking from behind','Clipping','Instigator','Abuse of officials','Closing hand on puck','Throwing stick','Broken stick','Illegal equipment','Leaving the bench','Other'];
+function plen(p,g){return p<=3?1200:(g==='PO'?1200:300)}
+function fmt(s){s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')}
+function gs(p,el){return (p-1)*1200+el}
+function toPE(g){return{p:Math.floor(g/1200)+1,el:g%1200}}
+function pname(p,g){return p<=3?'P'+p:(g==='PO'?'OT'+(p-3):'OT')}
+// returns map id->{start,end,status,strength}
+function schedule(pens){
+ const out={};
+ for(const team of ['H','A']){
+  const ps=pens.filter(p=>p.team===team).sort((a,b)=>gs(a.period,a.el)-gs(b.period,b.el)||a.id-b.id);
+  const slots=[];// end times of serving strength penalties
+  for(const p of ps){
+   const t=gs(p.period,p.el),T=TYPES[p.type],counts=T.str&&!p.off;
+   let start=t;
+   if(counts){
+    // free slots ending by t; if 2 busy, wait for earliest end
+    let live=slots.filter(e=>e>t);
+    if(live.length>=2){live.sort((a,b)=>a-b);start=live[live.length-2]; /* earliest of the two that remain */
+     // slot frees when the earlier of the two latest-active ends
+     const act=slots.filter(e=>e>t).sort((a,b)=>a-b);start=act[act.length-2]}
+   }
+   let end=start+T.d;
+   if(p.relAt!=null) end=p.relAt;
+   if(counts) slots.push(end);
+   out[p.id]={start,end,counts:!!counts};
+  }
+ }
+ return out;
+}
+function state(pens,period,el,gtype){
+ const now=gs(period,el),sch=schedule(pens),n={H:0,A:0},box={H:0,A:0};
+ for(const p of pens){const s=sch[p.id];
+  s.status= now<s.start?'pending':(now<s.end?'inbox':'rel');
+  if(TYPES[p.type].d===0) s.status='rel';
+  if(s.status==='inbox'){box[p.team]++; if(s.counts) n[p.team]++}}
+ n.H=Math.min(2,n.H);n.A=Math.min(2,n.A);
+ let h,a;
+ if(period>3&&gtype!=='PO'){const d=n.A-n.H;if(d>0){h=3+d;a=3}else if(d<0){h=3;a=3-d}else{h=3;a=3}}
+ else{h=5-n.H;a=5-n.A}
+ let label=h+' on '+a;
+ if(h>a)label+=' · Home PP';else if(a>h)label+=' · Away PP';
+ return{now,sch,n,box,h,a,label};
+}
+// early release on PP goal by scoringTeam: release earliest-ending minor of shorthanded team
+function earlyRelease(pens,period,el,gtype,scoring){
+ const st=state(pens,period,el,gtype),sh=scoring==='H'?'A':'H';
+ if(!((scoring==='H'&&st.h>st.a)||(scoring==='A'&&st.a>st.h)))return null;
+ const c=pens.filter(p=>p.team===sh&&TYPES[p.type].early&&!p.off&&st.sch[p.id].status==='inbox'&&st.sch[p.id].counts).sort((x,y)=>st.sch[x.id].end-st.sch[y.id].end);
+ if(!c.length)return null;const p=c[0],s=st.sch[p.id];
+ if(p.type==='DBL'&&st.now<s.start+120) p.relAt=st.now+120; else p.relAt=st.now;
+ return p;
+}
+if(typeof module!=='undefined')module.exports={schedule,state,earlyRelease,gs,toPE,fmt,TYPES};
+</script>
+<script>
+if(typeof document!=='undefined'){
+const KEY='penaltyTracker.v1';
+let S=JSON.parse(localStorage.getItem(KEY)||'null')||{period:1,el:0,gtype:'RS',pens:[],nid:1,running:false,runAt:null};
+let F={team:'H',digits:'',off:false,edit:null};
+const save=()=>localStorage.setItem(KEY,JSON.stringify(S));
+const $=id=>document.getElementById(id);
+function maxP(){return 7}
+function curEl(){if(S.running){const e=S.el+Math.floor((Date.now()-S.runAt)/1000);return Math.min(e,plen(S.period,S.gtype))}return S.el}
+function commitRun(){if(S.running){S.el=curEl();S.runAt=Date.now()}}
+window.adj=d=>{commitRun();S.el=Math.max(0,Math.min(plen(S.period,S.gtype),S.el+d));save();render()};
+$('pm').onclick=()=>{commitRun();if(S.period>1){S.period--;S.el=Math.min(S.el,plen(S.period,S.gtype))}save();render()};
+$('pp').onclick=()=>{commitRun();if(S.period<maxP()){S.period++;S.el=0;S.running=false}save();render()};
+window.toggleRun=()=>{if(S.running){S.el=curEl();S.running=false}else{S.running=true;S.runAt=Date.now()}save();render()};
+window.toggleType=()=>{S.gtype=S.gtype==='RS'?'PO':'RS';save();render()};
+window.editClock=()=>{const v=prompt('Elapsed time MM:SS',fmt(curEl()));if(!v)return;const m=v.match(/^(\d+):?(\d{2})$/);if(!m)return;commitRun();S.el=Math.min(plen(S.period,S.gtype),+m[1]*60+ +m[2]);save();render()};
+window.setTeam=t=>{F.team=t;$('fH').className=t==='H'?'on':'';$('fA').className=t==='A'?'on':''};
+window.tOff=()=>{F.off=!F.off;$('fo').textContent='Offsetting: '+(F.off?'ON':'OFF');$('fo').className=F.off?'on':''};
+function tsec(){const d=F.digits.padStart(3,'0');return +d.slice(0,-2)*60+ +d.slice(-2)}
+function showT(){$('ftd').textContent=fmt(tsec())}
+window.useNow=()=>{const e=curEl();F.digits=String(Math.floor(e/60))+String(e%60).padStart(2,'0');$('fp').value=S.period;showT()};
+const kp=$('kp');['1','2','3','4','5','6','7','8','9','⌫','0','C'].forEach(k=>{const b=document.createElement('button');b.textContent=k;b.onclick=()=>{if(k==='⌫')F.digits=F.digits.slice(0,-1);else if(k==='C')F.digits='';else if(F.digits.length<4)F.digits+=k;showT()};kp.appendChild(b)});
+$('fi').innerHTML=INFR.map(i=>`<option>${i}</option>`).join('');
+$('ft').innerHTML=Object.entries(TYPES).map(([k,v])=>`<option value="${k}">${v.l}</option>`).join('');
+window.resetForm=()=>{F.digits='';F.edit=null;F.off&&tOff();$('fn').value='';$('fnm').value='';$('ft').value='MIN';$('fi').selectedIndex=0;$('fp').value=S.period;$('fsave').textContent='Add penalty';$('ftitle').textContent='Add penalty';showT()};
+window.savePen=()=>{const el=tsec(),p=+$('fp').value;if(el>plen(p,S.gtype)){alert('Time exceeds period length');return}
+ const o={period:p,el,team:F.team,num:$('fn').value.trim(),name:$('fnm').value.trim(),infr:$('fi').value,type:$('ft').value,off:F.off};
+ if(F.edit){Object.assign(S.pens.find(x=>x.id===F.edit),o)}else S.pens.push({id:S.nid++,relAt:null,...o});
+ save();resetForm();render()};
+window.editPen=id=>{const p=S.pens.find(x=>x.id===id);F.edit=id;$('fp').value=p.period;F.digits=String(Math.floor(p.el/60))+String(p.el%60).padStart(2,'0');setTeam(p.team);if(F.off!==!!p.off)tOff();$('fn').value=p.num;$('fnm').value=p.name;$('fi').value=p.infr;$('ft').value=p.type;$('fsave').textContent='Save changes';$('ftitle').textContent='Edit penalty';showT();$('form').scrollIntoView({behavior:'smooth'})};
+window.delPen=id=>{if(confirm('Delete penalty?')){S.pens=S.pens.filter(x=>x.id!==id);save();render()}};
+window.relNow=id=>{const p=S.pens.find(x=>x.id===id);p.relAt=gs(S.period,curEl());save();render()};
+window.undoRel=id=>{S.pens.find(x=>x.id===id).relAt=null;save();render()};
+window.ppGoal=t=>{const p=earlyRelease(S.pens,S.period,curEl(),S.gtype,t);if(!p){alert('No releasable minor: '+(t==='H'?'Home':'Away')+' is not on a power play.');return}save();render()};
+window.newGame=()=>{if(confirm('Clear all penalties and start a new game?')){S={period:1,el:0,gtype:S.gtype,pens:[],nid:1,running:false,runAt:null};save();resetForm();render()}};
+window.exportCSV=()=>{const st=state(S.pens,S.period,curEl(),S.gtype);const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+ const rows=[['Period','Elapsed','Team','No','Name','Infraction','Type','Offsetting','Start','Release','Status']];
+ for(const p of S.pens){const s=st.sch[p.id],a=toPE(s.start),b=toPE(s.end);rows.push([pname(p.period,S.gtype),fmt(p.el),p.team==='H'?'Home':'Away',p.num,p.name,p.infr,TYPES[p.type].l,p.off?'Y':'',pname(a.p,S.gtype)+' '+fmt(a.el),TYPES[p.type].d?pname(b.p,S.gtype)+' '+fmt(b.el):'',s.status])}
+ const blob=new Blob([rows.map(r=>r.map(q).join(',')).join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='penalties.csv';a.click()};
+function render(){const el=curEl();
+ $('pl').textContent=pname(S.period,S.gtype);$('clk').textContent=fmt(el)+' / '+fmt(plen(S.period,S.gtype));
+ $('run').textContent=S.running?'⏸ Stop':'▶ Start';$('gt').textContent=S.gtype==='RS'?'Regular season':'Playoffs';
+ const ops=[];for(let p=1;p<=maxP();p++)ops.push(`<option value="${p}">${pname(p,S.gtype)}</option>`);const fv=$('fp').value;$('fp').innerHTML=ops.join('');$('fp').value=fv||S.period;
+ const st=state(S.pens,S.period,el,S.gtype);
+ $('str').textContent=st.label;$('str').style.color=st.h===st.a?'var(--tx)':'var(--yel)';
+ $('strsub').textContent=`In box — Home: ${st.box.H} · Away: ${st.box.A}${S.period>3&&S.gtype==='RS'?' · OT 3-on-3 rules':''}`;
+ const live=S.pens.filter(p=>st.sch[p.id].status!=='rel').sort((a,b)=>st.sch[a.id].end-st.sch[b.id].end);
+ $('queue').innerHTML=live.length?live.map(p=>{const s=st.sch[p.id],e=toPE(s.end);return `<div class="q"><span style="color:${s.status==='inbox'?'var(--red)':'var(--yel)'}">${p.team==='H'?'HOME':'AWAY'} #${p.num||'?'} ${TYPES[p.type].l.split(' (')[0]}${p.off?' (off)':''}</span><span>${s.status==='pending'?'waits · ':''}${fmt(s.end-st.now)} → ${pname(e.p,S.gtype)} ${fmt(e.el)}</span></div>`}).join(''):'<div class="sub">Nobody in the box</div>';
+ $('list').innerHTML=S.pens.slice().sort((a,b)=>gs(b.period,b.el)-gs(a.period,a.el)).map(p=>{const s=st.sch[p.id],e=toPE(s.end),a=toPE(s.start);
+  return `<div class="pen ${s.status}"><div class="t"><span>${p.team==='H'?'HOME':'AWAY'} #${p.num||'?'} ${p.name}</span><span>${pname(p.period,S.gtype)} ${fmt(p.el)}</span></div>
+  <div class="m">${p.infr} · ${TYPES[p.type].l}${p.off?' · <span class=tag>OFFSETTING</span>':''}${!s.counts&&TYPES[p.type].d?' · no strength effect':''}</div>
+  <div class="m">${TYPES[p.type].d?`${s.start!==gs(p.period,p.el)?'Starts '+pname(a.p,S.gtype)+' '+fmt(a.el)+' · ':''}Release ${pname(e.p,S.gtype)} ${fmt(e.el)}${p.relAt!=null?' (early)':''}`:'Ejected'} · <b>${s.status==='inbox'?'IN BOX':s.status==='pending'?'PENDING':'RELEASED'}</b></div>
+  <div class="a">${p.relAt!=null?`<button onclick="undoRel(${p.id})">Undo release</button>`:s.status==='inbox'?`<button onclick="relNow(${p.id})">Release now</button>`:''}<button onclick="editPen(${p.id})">Edit</button><button class="dng" onclick="delPen(${p.id})">Delete</button></div></div>`}).join('')||'<div class="sub">No penalties yet</div>';
+}
+resetForm();render();setInterval(()=>{if(S.running){if(curEl()>=plen(S.period,S.gtype)){S.el=plen(S.period,S.gtype);S.running=false;save()}render()}},500);
+}
+</script></body></html>
