@@ -1,6 +1,36 @@
 {
- "updated": "2026-11-04T04:33:07+00:00",
+ "updated": "2026-11-04T06:00:30+00:00",
  "games": [
+  {
+   "id": "nhl-2026-11-01-230",
+   "date": "2026-11-01",
+   "time": "17:00",
+   "away": "EDM",
+   "home": "NYR",
+   "role": "Event Analyst",
+   "gameNumber": 2026020230,
+   "remote": true,
+   "status": "worked",
+   "start": "17:00",
+   "end": "21:00",
+   "hours": 4.0,
+   "needsConfirm": false
+  },
+  {
+   "id": "nhl-2026-11-03-241",
+   "date": "2026-11-03",
+   "time": "17:00",
+   "away": "MIN",
+   "home": "PHI",
+   "role": "Event Analyst",
+   "gameNumber": 2026020241,
+   "remote": false,
+   "status": "worked",
+   "start": "17:00",
+   "end": "22:15",
+   "hours": 5.25,
+   "needsConfirm": false
+  },
   {
    "id": "nhl-2026-11-05-ANA-EDM",
    "date": "2026-11-05",

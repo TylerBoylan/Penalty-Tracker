@@ -143,7 +143,7 @@ function series(shifts,set,mode){const m={};for(const s of shifts){if(!s.date)co
 function nextGame(shifts,todayStr){return shifts.filter(s=>s.status!=="worked"&&s.date>=todayStr).sort((a,b)=>(a.date+(a.start||"")).localeCompare(b.date+(b.start||"")))[0]||null}
 function posFor(role){const r=(role||"").toLowerCase();if(r.includes("shot attempts"))return r.includes("home")?"SA-H":r.includes("visitor")||r.includes("away")?"SA-V":"SA";if(r.includes("event analyst"))return"EA";if(r.includes("video")||r.includes("sav"))return"SAV";if(r.includes("scor"))return"Scorer";return"Other"}
 function gameToShift(g){const[h,m]=(g.time||"").split(":").map(Number),tt=g.time?((h%12||12)+":"+pad(m)+(h<12?" AM":" PM")+" ET start. "):"";
- return{id:g.id,date:g.date,away:g.away,home:g.home,position:posFor(g.role),mode:g.remote===false?"In-person":"Remote",start:g.time||"",end:"",hours:String(g.estHours??3),status:"upcoming",confirm:g.needsConfirm!==false,
+ return{id:g.id,date:g.date,away:g.away,home:g.home,position:posFor(g.role),mode:g.remote===false?"In-person":"Remote",start:g.start||g.time||"",end:g.end||"",hours:String(g.hours??g.estHours??3),status:g.status==="worked"?"worked":"upcoming",confirm:g.needsConfirm!==false,
  notes:tt+(g.needsConfirm!==false?"Hours estimated – confirm. ":"")+(g.role||"")+(g.gameNumber?" (Game #"+g.gameNumber+")":"")}}
 // merge schedule games: skip ids already imported (deleted/edited stay as user left them) and same date+away+home already present
 function mergeSchedule(shifts,imported,games){shifts=shifts.slice();imported=imported.slice();let added=0;
