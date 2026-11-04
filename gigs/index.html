@@ -137,7 +137,16 @@ function series(shifts,set,mode){const m={};for(const s of shifts){if(!s.date)co
  m[k]=m[k]||{k,w:0,p:0};if(s.status==="worked")m[k].w+=grossOf(s,set);else m[k].p+=grossOf(s,set)}
  return Object.values(m).sort((a,b)=>a.k.localeCompare(b.k))}
 function nextGame(shifts,todayStr){return shifts.filter(s=>s.status!=="worked"&&s.date>=todayStr).sort((a,b)=>(a.date+(a.start||"")).localeCompare(b.date+(b.start||"")))[0]||null}
-if(typeof module!=="undefined")module.exports={periodFor,nextPayday,hoursOf,grossOf,totals,seasonRange,toCSV,parseCSV,DEF_SET,TEAMS,TEAM_NAMES,logoURL,ytd,series,nextGame};
+function posFor(role){const r=(role||"").toLowerCase();if(r.includes("shot attempts"))return r.includes("home")?"SA-H":r.includes("visitor")||r.includes("away")?"SA-V":"SA";if(r.includes("event analyst"))return"EA";if(r.includes("video")||r.includes("sav"))return"SAV";if(r.includes("scor"))return"Scorer";return"Other"}
+function gameToShift(g){const[h,m]=(g.time||"").split(":").map(Number),tt=g.time?((h%12||12)+":"+pad(m)+(h<12?" AM":" PM")+" ET start. "):"";
+ return{id:g.id,date:g.date,away:g.away,home:g.home,position:posFor(g.role),mode:g.remote===false?"In-person":"Remote",start:g.time||"",end:"",hours:String(g.estHours??3),status:"upcoming",confirm:g.needsConfirm!==false,
+ notes:tt+(g.needsConfirm!==false?"Hours estimated – confirm. ":"")+(g.role||"")+(g.gameNumber?" (Game #"+g.gameNumber+")":"")}}
+// merge schedule games: skip ids already imported (deleted/edited stay as user left them) and same date+away+home already present
+function mergeSchedule(shifts,imported,games){shifts=shifts.slice();imported=imported.slice();let added=0;
+ for(const g of games||[]){if(!g||!g.id||imported.includes(g.id))continue;imported.push(g.id);
+  if(shifts.some(s=>s.id===g.id||(s.date===g.date&&s.home===g.home&&s.away===g.away)))continue;shifts.push(gameToShift(g));added++}
+ return{shifts,imported,added}}
+if(typeof module!=="undefined")module.exports={periodFor,nextPayday,hoursOf,grossOf,totals,seasonRange,toCSV,parseCSV,DEF_SET,TEAMS,TEAM_NAMES,logoURL,ytd,series,nextGame,mergeSchedule,gameToShift,posFor};
 /*LOGIC-END*/
 if(typeof document!=="undefined"){
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s),money=n=>"$"+n.toFixed(2),money0=n=>"$"+Math.round(n).toLocaleString(),hrs=n=>(Math.round(n*100)/100)+"h";
@@ -148,7 +157,8 @@ let pays=JSON.parse(localStorage.getItem("gt_pays")||"{}");
 if(!shifts){shifts=[
  {id:"s1",date:"2026-11-05",away:"ANA",home:"EDM",position:"SAV",mode:"Remote",start:"20:00",end:"",hours:"3",status:"upcoming",confirm:true,notes:"8:00 PM start. Hours estimated – confirm"},
  {id:"s2",date:"2026-11-08",away:"VGK",home:"BUF",position:"EA",mode:"Remote",start:"15:30",end:"",hours:"3",status:"upcoming",confirm:true,notes:"3:30 PM start. Hours estimated – confirm"}];}
-const save=()=>{localStorage.setItem("gt_shifts",JSON.stringify(shifts));localStorage.setItem("gt_set",JSON.stringify(set));localStorage.setItem("gt_pays",JSON.stringify(pays))};save();
+let imported=JSON.parse(localStorage.getItem("gt_imported")||"[]");
+const save=()=>{localStorage.setItem("gt_imported",JSON.stringify(imported));localStorage.setItem("gt_shifts",JSON.stringify(shifts));localStorage.setItem("gt_set",JSON.stringify(set));localStorage.setItem("gt_pays",JSON.stringify(pays))};save();
 const today=()=>window.__TODAY__||ymd(new Date()),net=g=>g*(1-(+set.tax||0)/100);
 const fmtD=s=>parseD(s).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric",year:"numeric"});
 const fmtS=s=>parseD(s).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
@@ -287,14 +297,24 @@ function render(){
   <div class="row"><div><label>Season start month</label><input type="number" min="1" max="12" id="c-ss" value="${set.seasonStart}"></div><div><label>Season end month</label><input type="number" min="1" max="12" id="c-se" value="${set.seasonEnd}"></div></div>
   <label>Positions (comma separated)</label><input id="c-pos" value="${esc(set.positions.join(", "))}">
   <button class="pri" id="c-save" style="width:100%;margin-top:14px">Save settings</button></div>
+  <h2>Schedule</h2><div class="card"><button id="b-sync" style="width:100%">Sync schedule</button><div class="sub" id="sync-at" style="margin-top:8px">Last sync: ${set.lastSync?new Date(set.lastSync).toLocaleString():"never"}</div></div>
   <h2>Backup</h2><div class="card"><div class="row"><button id="b-exp">Export CSV</button><button id="b-imp">Import CSV</button></div>
   <input type="file" id="b-file" accept=".csv,text/csv" class="hide"><div class="sub" style="margin-top:8px">Import merges by id (replaces matching shifts).</div></div>`;
   $("#c-save").onclick=()=>{set.rate=+$("#c-rate").value||29;set.tax=+$("#c-tax").value||0;set.split=Math.min(28,Math.max(1,+$("#c-split").value||15));set.seasonStart=+$("#c-ss").value||10;set.seasonEnd=+$("#c-se").value||6;
    set.positions=$("#c-pos").value.split(",").map(x=>x.trim()).filter(Boolean);save();alert("Saved")};
   $("#b-exp").onclick=()=>{const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([toCSV(shifts)],{type:"text/csv"}));a.download="gigs-"+today()+".csv";a.click()};
+  $("#b-sync").onclick=()=>syncSchedule(true);
   $("#b-imp").onclick=()=>$("#b-file").click();
   $("#b-file").onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>{const rows=parseCSV(t);rows.forEach(r=>{if(!r.id)r.id="s"+Date.now()+Math.random();const i=shifts.findIndex(x=>x.id==r.id);i>=0?shifts[i]=r:shifts.push(r)});save();alert(`Imported ${rows.length} shift(s)`);show("dash")})};
  }
 }
-render();}
+function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;t.style.cssText="position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.3)";document.body.appendChild(t);setTimeout(()=>t.remove(),2600)}
+function syncSchedule(manual){if(typeof fetch!=="function")return Promise.resolve();
+ return fetch("schedule.json?t="+Date.now(),{cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.json()}).then(d=>{
+  const r=mergeSchedule(shifts,imported,d&&d.games);shifts=r.shifts;imported=r.imported;
+  for(const s of shifts)if(s.position&&!set.positions.includes(s.position))set.positions.push(s.position);
+  set.lastSync=new Date().toISOString();save();render();
+  if(r.added)toast(`Added ${r.added} game${r.added>1?"s":""}`);else if(manual)toast("Schedule up to date")}).catch(()=>{if(manual)toast("Sync failed – offline?")})}
+window.__sync=syncSchedule;
+render();syncSchedule(false);}
 </script></body></html>

@@ -1,0 +1,89 @@
+{
+ "updated": "2026-11-04T04:33:07+00:00",
+ "games": [
+  {
+   "id": "nhl-2026-11-05-ANA-EDM",
+   "date": "2026-11-05",
+   "time": "20:00",
+   "away": "ANA",
+   "home": "EDM",
+   "role": "Spotter & Video (SAV)",
+   "gameNumber": null,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-11-08-VGK-BUF",
+   "date": "2026-11-08",
+   "time": "15:30",
+   "away": "VGK",
+   "home": "BUF",
+   "role": "Event Analyst",
+   "gameNumber": null,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-11-13-310",
+   "date": "2026-11-13",
+   "time": "22:00",
+   "away": "NYR",
+   "home": "VAN",
+   "role": "Central Scorer - Event Analyst",
+   "gameNumber": 310,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-11-17-337",
+   "date": "2026-11-17",
+   "time": "19:00",
+   "away": "BUF",
+   "home": "PHI",
+   "role": "Event Analyst",
+   "gameNumber": 337,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-11-21-363",
+   "date": "2026-11-21",
+   "time": "19:00",
+   "away": "WSH",
+   "home": "BOS",
+   "role": "Central Scorer - Shot Attempts - Visitor",
+   "gameNumber": 363,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-11-22-375",
+   "date": "2026-11-22",
+   "time": "19:00",
+   "away": "EDM",
+   "home": "STL",
+   "role": "Central Scorer - Shot Attempts - Home",
+   "gameNumber": 375,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-11-25-388",
+   "date": "2026-11-25",
+   "time": "19:00",
+   "away": "CAR",
+   "home": "TBL",
+   "role": "Central Scorer - Shot Attempts - Visitor",
+   "gameNumber": 388,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  }
+ ]
+}
