@@ -1,5 +1,5 @@
 /* Stacked service worker: offline cache for the app shell only. It never sees your data (that lives in localStorage). */
-const CACHE = 'stacked-v2';
+const CACHE = 'stacked-v3';
 const ASSETS = ['./', './index.html', './app.css', './app.js', './sheets.js', './config.js', './manifest.webmanifest', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {

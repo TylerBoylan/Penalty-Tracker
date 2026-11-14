@@ -130,7 +130,7 @@ function stats(mk) {
 }
 
 /* ---------- ui state ---------- */
-let view = 'home', vMK = curMK(), txF = { q: '', type: 'all', cat: '', scope: 'month' }, planTab = 'cats', vYear = +curMK().slice(0, 4);
+let view = 'home', vMK = curMK(), txF = { q: '', type: 'all', cat: '', scope: 'month' }, planTab = 'cats', incOpen = new Set(), incShut = new Set(), vYear = +curMK().slice(0, 4);
 const TITLES = { home: 'Home', tx: 'Activity', plan: 'Plan', year: 'Year', set: 'Settings' };
 function go(v) {
   if (v === 'add') return txSheet();
@@ -302,7 +302,7 @@ function bindTx(root) {
 function delTx(id) {
   const i = S.txns.findIndex(t => t.id === id); if (i < 0) return;
   const [t] = S.txns.splice(i, 1); save(); render();
-  toast('Deleted ' + money(t.amt), 'Undo', () => { S.txns.push(t); save(); render(); });
+  toast('Deleted ' + money(t.amt) + (t.type === 'inc' ? ' · ' + incLineName(t) : ''), 'Undo', () => { S.txns.push(t); save(); render(); });
 }
 
 /* ---------- charts ---------- */
@@ -399,7 +399,7 @@ function renderHome() {
   const recent = st.tx.slice().sort((a, b) => b.date.localeCompare(a.date) || (b.ts || 0) - (a.ts || 0)).slice(0, 5);
   const incRows = m.income.map(l => {
     const got = st.byInc[l.id] || 0, pl = plannedOf(l);
-    return `<div class="kv"><span>${esc(l.name)}${l.payDate ? `<span class="tiny"> · ${fmtShort(l.payDate)}</span>` : ''}</span><span>${got > 0 ? `<b class="grn">${money(got)}</b>` : `<span class="sub">${pl ? money(pl) + ' planned' : '—'}</span>`}</span></div>`;
+    return `<div class="kv" data-hi="${esc(l.id)}" style="cursor:pointer"><span>${esc(l.name)}${l.payDate ? `<span class="tiny"> · ${fmtShort(l.payDate)}</span>` : ''}</span><span>${got > 0 ? `<b class="${overRx(got, pl) ? 'amb' : 'grn'}">${overRx(got, pl) ? '⚠ ' : ''}${money(got)}</b>` : `<span class="sub">${pl ? money(pl) + ' planned' : '—'}</span>`}</span></div>`;
   }).join('') + (st.byInc[OTHER_INC] ? `<div class="kv"><span>Other income</span><b class="grn">${money(st.byInc[OTHER_INC])}</b></div>` : '');
   h += `<div class="g2"><div><h2>Budget vs actual <button class="lnk" id="h-plan">Edit</button></h2><div class="card">${rows || '<div class="sub">No budgets set for this month yet.</div>'}</div></div>
    <div><h2>Recent <button class="lnk" id="h-all">See all</button></h2><div class="card list">${recent.map(t => txRow(t)).join('') || '<div class="sub">Nothing logged yet. Tap + to add.</div>'}</div>
@@ -410,12 +410,19 @@ function renderHome() {
   $$('#v-home [data-c]').forEach(r => r.onclick = () => { txF = { q: '', type: 'exp', cat: r.dataset.c, scope: 'month' }; go('tx'); });
   $('#h-plan').onclick = () => { planTab = 'cats'; go('plan'); };
   $('#h-inc').onclick = () => { planTab = 'inc'; go('plan'); };
+  $$('#v-home [data-hi]').forEach(r => r.onclick = () => { planTab = 'inc'; incOpen.add(r.dataset.hi); incShut.delete(r.dataset.hi); go('plan'); });
   $('#h-all').onclick = () => { txF = { q: '', type: 'all', cat: '', scope: 'month' }; go('tx'); };
   const cd = $('#clrdemo'); if (cd) cd.onclick = clearAll;
 }
 function animBars(root) { requestAnimationFrame(() => requestAnimationFrame(() => $$(root + ' .bar i').forEach(i => i.style.width = i.dataset.w + '%'))); }
 
 /* ---------- ACTIVITY ---------- */
+function incLinesFor() { // income lines seen in the shown period, by id
+  const seen = new Map(), mks = txF.scope === 'month' ? [vMK] : Object.keys(S.months).sort().reverse();
+  mks.forEach(mk => (S.months[mk] || { income: [] }).income.forEach(l => { if (!seen.has(l.id)) seen.set(l.id, l.name); }));
+  S.txns.forEach(t => { if (t.type === 'inc' && !seen.has(t.cat) && (txF.scope !== 'month' || t.date.startsWith(vMK))) seen.set(t.cat, t.cat === OTHER_INC ? 'Other income' : incLineName(t)); });
+  return [...seen].map(([id, name]) => ({ id, name }));
+}
 function renderTx() {
   const el = $('#v-tx');
   const keep = document.activeElement && document.activeElement.id === 'q';
@@ -423,16 +430,19 @@ function renderTx() {
   if (txF.scope === 'month') list = list.filter(t => t.date.startsWith(vMK));
   if (txF.type !== 'all') list = list.filter(t => t.type === txF.type);
   if (txF.cat) list = list.filter(t => t.type === 'exp' && catById(t.cat).id === txF.cat);
+  if (txF.type === 'inc' && txF.line) list = list.filter(t => t.cat === txF.line);
   const q = txF.q.trim().toLowerCase();
   if (q) list = list.filter(t => [t.note, t.type === 'inc' ? incLineName(t) : catById(t.cat).name, String(t.amt), money(t.amt), t.card, t.date].join(' ').toLowerCase().includes(q));
   list.sort((a, b) => b.date.localeCompare(a.date) || (b.ts || 0) - (a.ts || 0));
   const out = sum(list.filter(t => t.type === 'exp').map(t => t.amt)), inn = sum(list.filter(t => t.type === 'inc').map(t => t.amt));
-  const dayTot = {}; list.forEach(t => { if (t.type === 'exp') dayTot[t.date] = (dayTot[t.date] || 0) + t.amt; });
+  const dayTot = {}, dayIn = {}; list.forEach(t => { if (t.type === 'exp') dayTot[t.date] = (dayTot[t.date] || 0) + t.amt; else dayIn[t.date] = (dayIn[t.date] || 0) + t.amt; });
   let h = `<input id="q" type="search" placeholder="Search notes, categories, amounts" value="${esc(txF.q)}" autocomplete="off" style="margin-bottom:10px">
   <div class="chips"><button class="chip ${txF.scope === 'month' ? 'on' : ''}" data-sc="month">${esc(mkLabel(vMK))}</button><button class="chip ${txF.scope === 'all' ? 'on' : ''}" data-sc="all">All time</button>
   <span style="width:1px;background:#333;flex:none;margin:4px 2px"></span>
   <button class="chip ${txF.type === 'all' ? 'on' : ''}" data-ty="all">All</button><button class="chip ${txF.type === 'exp' ? 'on' : ''}" data-ty="exp">Spending</button><button class="chip ${txF.type === 'inc' ? 'on' : ''}" data-ty="inc">Income</button></div>
-  <div class="chips"><button class="chip ${!txF.cat ? 'on' : ''}" data-cf="">Any category</button>${S.cats.map(c => `<button class="chip ${txF.cat === c.id ? 'on' : ''}" data-cf="${esc(c.id)}"><span class="dot" style="background:${esc(c.color)}"></span>${esc(c.name)}</button>`).join('')}</div>
+  ${txF.type === 'inc' ? `<div class="chips" id="tx-lines"><button class="chip ${!txF.line ? 'on' : ''}" data-lf="">Any income</button>${incLinesFor().map(x => `<button class="chip ${txF.line === x.id ? 'on' : ''}" data-lf="${esc(x.id)}"><span class="dot" style="background:var(--grn)"></span>${esc(x.name)}</button>`).join('')}</div>`
+    : `<div class="chips"><button class="chip ${!txF.cat ? 'on' : ''}" data-cf="">Any category</button>${S.cats.map(c => `<button class="chip ${txF.cat === c.id ? 'on' : ''}" data-cf="${esc(c.id)}"><span class="dot" style="background:${esc(c.color)}"></span>${esc(c.name)}</button>`).join('')}</div>`}
+  ${txF.type === 'inc' && list.length ? '<div class="tiny" style="margin:0 6px 4px">Tap a payment to edit it, or swipe left to delete.</div>' : ''}
   <div class="sub" style="margin:2px 6px 0" id="tx-count">${list.length} transaction${list.length === 1 ? '' : 's'} · −${money(out)}${inn ? ` · <span class="grn">+${money(inn)}</span>` : ''}</div>`;
   if (!list.length) h += `<div class="card empty" style="margin-top:12px"><h3>Nothing here</h3><p>${q || txF.cat || txF.type !== 'all' ? 'No transactions match these filters.' : 'No transactions this month yet.'}</p><button class="pri" id="tx-add">Add transaction</button></div>`;
   let lastD = '', shown = 0;
@@ -440,7 +450,7 @@ function renderTx() {
     if (shown++ >= 600) { h += '<div class="sub" style="text-align:center;margin:12px">Showing the latest 600. Search to narrow down.</div>'; break; }
     if (t.date !== lastD) {
       lastD = t.date;
-      h += `<div class="dayh"><span>${fmtDay(t.date)}${txF.scope === 'all' ? ' ' + t.date.slice(0, 4) : ''}</span><span>${dayTot[t.date] ? '−' + money(dayTot[t.date]) : ''}</span></div>`;
+      h += `<div class="dayh"><span>${fmtDay(t.date)}${txF.scope === 'all' ? ' ' + t.date.slice(0, 4) : ''}</span><span>${dayTot[t.date] ? '−' + money(dayTot[t.date]) : dayIn[t.date] ? '<span class="grn">+' + money(dayIn[t.date]) + '</span>' : ''}</span></div>`;
     }
     h += txRow(t, true);
   }
@@ -449,7 +459,8 @@ function renderTx() {
   qi.oninput = () => { txF.q = qi.value; renderTx(); };
   if (keep) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
   $$('[data-sc]', el).forEach(b => b.onclick = () => { txF.scope = b.dataset.sc; renderTx(); });
-  $$('[data-ty]', el).forEach(b => b.onclick = () => { txF.type = b.dataset.ty; if (b.dataset.ty === 'inc') txF.cat = ''; renderTx(); });
+  $$('[data-ty]', el).forEach(b => b.onclick = () => { txF.type = b.dataset.ty; txF.line = ''; if (b.dataset.ty === 'inc') txF.cat = ''; renderTx(); });
+  $$('[data-lf]', el).forEach(b => b.onclick = () => { txF.line = b.dataset.lf; renderTx(); });
   $$('[data-cf]', el).forEach(b => b.onclick = () => { txF.cat = b.dataset.cf; if (txF.cat && txF.type === 'inc') txF.type = 'all'; renderTx(); });
   const ta = $('#tx-add'); if (ta) ta.onclick = () => txSheet();
   bindTx(el);
@@ -467,17 +478,18 @@ function txSheet(t, preset = {}) {
   const edit = !!t;
   let ty = t ? t.type : preset.type || 'exp';
   let sel = t ? t.cat : preset.cat || '';
-  const defDate = t ? t.date : (vMK === curMK() ? today() : vMK + '-01');
+  const defDate = t ? t.date : preset.date || (vMK === curMK() ? today() : vMK + '-01');
   const amtVal = t ? String(t.amt) : preset.amt ? String(preset.amt) : '';
-  openSheet(`<h3>${edit ? 'Edit transaction' : preset.type === 'inc' ? 'Log income' : 'Add transaction'}${edit && t.src === 'bill' ? '<span class="tag">AUTO BILL</span>' : ''}</h3>
+  openSheet(`<h3>${edit ? (t.type === 'inc' ? 'Edit payment' : 'Edit transaction') : preset.replace ? 'Replace payment' : preset.type === 'inc' ? 'Log income' : 'Add transaction'}${edit && t.src === 'bill' ? '<span class="tag">AUTO BILL</span>' : ''}</h3>
   <div class="seg"><button data-tt="exp" class="${ty === 'exp' ? 'on' : ''}">Expense</button><button data-tt="inc" class="${ty === 'inc' ? 'on' : ''}">Income</button></div>
   <div class="amtin" id="f-amtw"><span>$</span><input id="f-amt" inputmode="decimal" enterkeyhint="done" autocomplete="off" placeholder="0" value="${esc(amtVal)}" aria-label="Amount"></div>
   <input id="f-note" placeholder="What was it? (optional)" value="${esc(t ? t.note || '' : preset.note || '')}" autocomplete="off" maxlength="80" aria-label="Note">
   <div class="row" style="margin-top:8px"><input type="date" id="f-date" value="${esc(defDate)}" aria-label="Date"><input id="f-card" placeholder="Card (last 4)" inputmode="numeric" maxlength="4" value="${esc(t ? t.card || '' : '')}" aria-label="Card last 4"></div>
-  <div class="hint" id="f-hint">${edit ? 'Category' : 'Tap a category to save'}</div>
+  <div class="iwarn hide" id="f-warn" role="alert"></div>
+  <div class="hint" id="f-hint">${edit ? 'Category' : preset.replace ? 'Tap the line to save. This replaces what was logged.' : 'Tap a category to save'}</div>
   <div class="cgrid" id="f-cats"></div>
   ${edit ? `<div class="row" style="margin-top:16px"><button class="dng" id="f-del">Delete</button><button class="pri" id="f-save">Save</button></div>` : ''}`, sh => {
-    const amt = $('#f-amt', sh), dateI = $('#f-date', sh);
+    const amt = $('#f-amt', sh), dateI = $('#f-date', sh); let warned = '';
     const drawCats = () => {
       let items;
       if (ty === 'exp') items = S.cats.map(c => ({ id: c.id, html: badge(c), name: esc(c.name) }));
@@ -500,10 +512,21 @@ function txSheet(t, preset = {}) {
       const rec = { type: ty, amt: r2(v), cat: sel || (ty === 'exp' ? UNCAT : OTHER_INC), note: $('#f-note', sh).value.trim(), date, card: $('#f-card', sh).value.replace(/\D/g, '').slice(0, 4) };
       if (edit) { if (rec.cat !== t.cat || rec.type !== t.type) delete t.rawCat; Object.assign(t, rec); save(); closeSheet(); render(); toast('Saved'); return; }
       const n = { id: uid(), ts: Date.now(), created: nowISO(), src: 'app', ...rec };
+      if (ty === 'inc' && !preset.ack && !preset.replace) { // same amount on the same line within 3 days = probably a double log
+        const d0 = parseD(date).getTime(), dup = S.txns.find(x => x.type === 'inc' && x.cat === n.cat && cents(x.amt) === cents(n.amt) && Math.abs(parseD(x.date).getTime() - d0) <= 3 * 864e5);
+        const key = n.cat + '|' + cents(n.amt) + '|' + date;
+        if (dup && warned !== key) {
+          warned = key; const lbl = incLineName(n), w = $('#f-warn', sh);
+          w.textContent = `Possible double log: ${money(dup.amt)} to ${lbl} was already logged on ${fmtShort(dup.date)}. Tap ${lbl} again to save anyway.`;
+          w.classList.remove('hide'); return;
+        }
+      }
+      const old = preset.replace ? S.txns.filter(x => preset.replace.includes(x.id)) : [];
+      if (old.length) S.txns = S.txns.filter(x => !preset.replace.includes(x.id));
       touchMonth(date.slice(0, 7));
       S.txns.push(n); save(); closeSheet(); render();
       const lbl = ty === 'exp' ? catById(n.cat).name : incLineName(n);
-      toast(`${ty === 'exp' ? 'Added' : 'Logged'} ${money(n.amt)} · ${lbl}`, 'Undo', () => { S.txns = S.txns.filter(x => x.id !== n.id); save(); render(); });
+      toast(`${old.length ? 'Replaced with' : ty === 'exp' ? 'Added' : 'Logged'} ${money(n.amt)} · ${lbl}`, 'Undo', () => { S.txns = S.txns.filter(x => x.id !== n.id).concat(old); save(); render(); });
     };
     $$('[data-tt]', sh).forEach(b => b.onclick = () => { ty = b.dataset.tt; if (!edit) sel = ''; $$('[data-tt]', sh).forEach(x => x.classList.toggle('on', x === b)); drawCats(); });
     dateI.onchange = () => { if (ty === 'inc') drawCats(); };
@@ -530,16 +553,12 @@ function renderPlan() {
       <div class="money-in"><input class="num" inputmode="decimal" data-b="${esc(c.id)}" value="${b ? r2(b) : ''}" placeholder="0" aria-label="${esc(c.name)} budget"></div></div>`;
     }).join('')}</div><div class="sub" style="margin:0 6px">Tap a category name to rename, recolor or delete it. Budgets here are for ${esc(mkLabel(mk))}; each new month starts as a copy of the month before.</div>`;
   } else if (planTab === 'inc') {
+    const lines = m.income.map((l, i) => ({ l, i, id: l.id }));
+    if (st.byInc[OTHER_INC]) lines.push({ l: null, i: -1, id: OTHER_INC });
     h += `<div class="card hero"><div class="eyebrow">${esc(mkLabel(mk, true))} income</div><div class="xl" style="font-size:36px">${money(st.inc)}</div>
-    <div class="sub">received of ${money(st.plannedInc)} planned</div><div class="bar"><i class="grn" data-w="${pct(st.inc, st.plannedInc)}"></i></div></div><div class="card">` +
-      m.income.map((l, i) => {
-        const got = st.byInc[l.id] || 0;
-        return `<div class="prow">${incBadge()}<div class="mid" data-el="${i}" style="cursor:pointer"><b>${esc(l.name)}</b><span class="tiny">${got ? `<span class="grn">${money(got)} in</span>` : 'not in yet'}${l.payDate ? ' · ' + fmtShort(l.payDate) : ''}</span></div>
-        ${l.hourly ? `<input class="hrs" inputmode="decimal" data-h="${i}" value="${+l.hours || ''}" placeholder="hrs" aria-label="${esc(l.name)} hours"><span class="tiny" style="flex:none;text-align:right;line-height:1.3">× $${esc(S.settings.rate)}<br><b style="color:#fff;font-size:13px">${money0(plannedOf(l))}</b></span>`
-          : `<div class="money-in"><input class="num" inputmode="decimal" data-ip="${i}" value="${+l.planned || ''}" placeholder="0" aria-label="${esc(l.name)} planned"></div>`}
-        <button class="sm" data-log="${i}">Log</button></div>`;
-      }).join('') + `</div><button id="p-addi" style="width:100%">+ Income line</button>
-      <div class="sub" style="margin:10px 6px">Hourly lines estimate gross pay as hours × your rate ($${esc(S.settings.rate)}/hr, change it in Settings). Tap <b>Log</b> when the money lands to record what you actually got.</div>`;
+    <div class="sub">received of ${money(st.plannedInc)} planned</div><div class="bar"><i class="grn" data-w="${pct(st.inc, st.plannedInc)}"></i></div></div>
+    <div class="card ilist">${lines.map(x => incLineHTML(x, st)).join('')}</div><button id="p-addi" style="width:100%">+ Income line</button>
+    <div class="sub" style="margin:10px 6px;line-height:1.45">Tap <b>Log</b> when a paycheck lands. Tap a line to see its payments, fix or delete one, or change what you planned. Hourly lines estimate pay as hours × $${esc(S.settings.rate)}/hr.</div>`;
   } else {
     const rec = S.recurring.slice().sort((a, b) => a.day - b.day);
     h += `<div class="card hero"><div class="eyebrow">Recurring bills</div><div class="xl" style="font-size:36px">${money(sum(rec.filter(r => r.active).map(r => r.amt)))}</div><div class="sub">a month · added automatically when each month starts</div></div>
@@ -553,7 +572,9 @@ function renderPlan() {
   numIn('b', (id, v) => { M(mk).budgets[id] = v; });
   numIn('ip', (i, v) => { M(mk).income[+i].planned = v; });
   numIn('h', (i, v) => { M(mk).income[+i].hours = v; });
-  $$('[data-log]', el).forEach(b => b.onclick = () => { const l = m.income[+b.dataset.log]; txSheet(null, { type: 'inc', cat: l.id, amt: plannedOf(l) || '', note: l.name }); });
+  $$('[data-log]', el).forEach(b => b.onclick = e => { e.stopPropagation(); const i = +b.dataset.log; logIncome(i >= 0 ? m.income[i] : null); });
+  $$('[data-ix]', el).forEach(d => d.onclick = () => { const id = d.dataset.ix, open = d.closest('.iline').classList.contains('open'); if (open) { incOpen.delete(id); incShut.add(id); } else { incOpen.add(id); incShut.delete(id); } renderPlan(); });
+  bindTx(el);
   $$('[data-ec]', el).forEach(d => d.onclick = () => catSheet(S.cats.find(c => c.id === d.dataset.ec)));
   $$('[data-el]', el).forEach(d => d.onclick = () => incSheet(+d.dataset.el));
   $$('[data-er]', el).forEach(d => d.onclick = () => recSheet(S.recurring.find(r => r.id === d.dataset.er)));
@@ -566,6 +587,49 @@ function renderPlan() {
   on('p-addc', () => catSheet(null));
   on('p-addi', () => incSheet(-1));
   on('p-addr', () => recSheet(null));
+}
+const IC_EDIT = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+const IC_TRASH = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
+const linePays = (id, mk) => S.txns.filter(t => t.type === 'inc' && t.cat === id && t.date.startsWith(mk)).sort((a, b) => a.date.localeCompare(b.date) || (a.ts || 0) - (b.ts || 0));
+const overRx = (got, pl) => pl > 0 && got > pl * 1.5;
+function incLineHTML(x, st) {
+  const { l, i, id } = x, name = l ? l.name : 'Other income', ps = linePays(id, vMK), got = r2(sum(ps.map(t => t.amt))), pl = l ? plannedOf(l) : 0;
+  const over = overRx(got, pl), open = incOpen.has(id) || (over && !incShut.has(id));
+  const status = !ps.length ? `<span class="sub">Not logged yet${l && l.payDate ? ' · due ' + fmtShort(l.payDate) : ''}${pl ? ' · ' + money(pl) + ' planned' : ''}</span>`
+    : ps.length === 1 ? `<span class="grn">Logged ${money(got)} on ${fmtShort(ps[0].date)}</span>${pl ? ` <span class="sub">· of ${money(pl)}</span>` : ''}`
+    : `<span class="grn">Logged ${money(got)}</span> <span class="sub">· ${ps.length} payments${pl ? ' · of ' + money(pl) : ''}</span>`;
+  const icon = !ps.length ? '<span class="ist" aria-hidden="true"></span>' : `<span class="ist ${over ? 'warn' : 'ok'}" aria-hidden="true">${over ? '!' : '✓'}</span>`;
+  const right = !ps.length && l ? `<button class="sm pri" data-log="${i}" aria-label="Log ${esc(name)}">Log</button>` : `<span class="chev" aria-hidden="true">›</span>`;
+  let body = '';
+  if (open) {
+    body = `<div class="ixp">${ps.map(payRow).join('') || `<div class="sub" style="padding:4px 2px 10px">No payments logged for ${esc(name)} in ${esc(mkLabel(vMK))}.</div>`}
+    <button class="ilog" data-log="${i}">${ps.length ? '+ Log another payment' : '+ Log payment'}</button>
+    ${l ? `<div class="iplan"><span class="tiny">${l.hourly ? 'Hours this month × $' + esc(S.settings.rate) + ' = <b style="color:#fff">' + money0(plannedOf(l)) + '</b>' : 'Planned for ' + esc(mkLabel(vMK))}</span>
+      ${l.hourly ? `<input class="hrs" inputmode="decimal" data-h="${i}" value="${+l.hours || ''}" placeholder="hrs" aria-label="${esc(name)} hours">` : `<div class="money-in"><input class="num" inputmode="decimal" data-ip="${i}" value="${+l.planned || ''}" placeholder="0" aria-label="${esc(name)} planned"></div>`}</div>
+    <button class="lnk sub" data-el="${i}" style="margin-top:4px">Rename, pay date, or remove line ›</button>` : ''}</div>`;
+  }
+  return `<div class="iline${open ? ' open' : ''}${over ? ' over' : ''}" data-line="${esc(id)}"><div class="ihead" data-ix="${esc(id)}" role="button" aria-expanded="${open}">${icon}<div class="mid"><b>${esc(name)}</b><span class="tiny">${status}</span></div>${right}</div>
+  ${over ? `<div class="iwarn">⚠ ${money(got)} is ${Math.round(got / pl * 100)}% of the ${money(pl)} planned. Logged twice? Delete the extra payment below.</div>` : ''}${body}</div>`;
+}
+function payRow(t) {
+  const tags = (t.src === 'finny' ? '<span class="tag">FINNY</span>' : '') + (t.src === 'import' ? '<span class="tag">IMPORTED</span>' : '') + (t.src === 'migrated' ? '<span class="tag">SHEET</span>' : '');
+  return `<div class="swr pay" data-id="${esc(t.id)}"><div class="swa"><button class="ed" data-e="${esc(t.id)}">Edit</button><button class="dl" data-d="${esc(t.id)}">Delete</button></div>
+  <div class="swf tx" data-t="${esc(t.id)}"><div class="mid"><div class="t1">${money(t.amt)}${tags}</div><div class="t2">${esc(fmtShort(t.date))}${t.note ? ' · ' + esc(t.note) : ''}</div></div>
+  <button class="ib" data-e="${esc(t.id)}" aria-label="Edit ${money(t.amt)} payment">${IC_EDIT}</button><button class="ib del" data-d="${esc(t.id)}" aria-label="Delete ${money(t.amt)} payment">${IC_TRASH}</button></div></div>`;
+}
+function logIncome(l) {
+  const id = l ? l.id : OTHER_INC, name = l ? l.name : 'Other income', ps = linePays(id, vMK);
+  const preset = { type: 'inc', cat: id, amt: l ? plannedOf(l) || '' : '', note: l ? l.name : '' };
+  if (!ps.length) return txSheet(null, preset);
+  const last = ps[ps.length - 1], got = r2(sum(ps.map(t => t.amt)));
+  const msg = ps.length === 1 ? `${name} already has ${money(last.amt)} logged on ${fmtShort(last.date)}. Add another?`
+    : `${name} already has ${ps.length} payments (${money(got)}) logged in ${mkLabel(vMK)}, the latest ${money(last.amt)} on ${fmtShort(last.date)}. Add another?`;
+  openSheet(`<h3>Already logged</h3><div class="sub" id="dup-msg" style="line-height:1.45;font-size:15px">${esc(msg)}</div>
+  <div class="stack" style="margin-top:18px"><button class="pri" id="dup-rep">Replace ${ps.length > 1 ? 'all ' + ps.length + ' with one payment' : 'it'}</button><button id="dup-add">Add another</button><button class="lnk sub" id="dup-x" style="margin-top:4px">Cancel</button></div>`, sh => {
+    $('#dup-x', sh).onclick = closeSheet;
+    $('#dup-add', sh).onclick = () => txSheet(null, { ...preset, ack: true });
+    $('#dup-rep', sh).onclick = () => txSheet(null, { ...preset, amt: last.amt, date: last.date, note: last.note || preset.note, replace: ps.map(t => t.id) });
+  });
 }
 function catSheet(c) {
   const isNew = !c, used = c ? S.txns.filter(t => t.type === 'exp' && t.cat === c.id).length : 0;

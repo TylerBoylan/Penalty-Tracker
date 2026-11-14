@@ -173,3 +173,26 @@ pre{background:#0b0b0c;border:1px solid var(--line);border-radius:12px;padding:1
 .banner.warn{background:rgba(255,159,10,.12);border-color:rgba(255,159,10,.35);color:#ffe2b8}
 .banner.err{background:rgba(255,69,58,.12);border-color:rgba(255,69,58,.35);color:#ffd0cc}
 .banner.off{background:rgba(142,142,147,.12);border-color:rgba(142,142,147,.3);color:#ddd}
+/* income lines */
+.ilist{padding-top:6px;padding-bottom:6px}
+.iline{border-bottom:1px solid rgba(255,255,255,.06)}.iline:last-child{border:0}
+.ihead{display:flex;gap:12px;align-items:center;padding:12px 0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.ihead .mid{flex:1;min-width:0}.ihead .mid b{display:block;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ihead .mid .tiny{display:block;margin-top:2px;line-height:1.35}
+.ist{width:26px;height:26px;flex:none;border-radius:50%;border:2px dashed #48484a;display:grid;place-items:center;font-size:14px;font-weight:800}
+.ist.ok{border:0;background:rgba(48,209,88,.18);color:var(--grn)}.ist.warn{border:0;background:rgba(255,159,10,.2);color:var(--amb)}
+.ihead button.sm{min-height:36px;padding:0 18px;font-size:14px;flex:none}
+.chev{color:#636366;font-size:22px;flex:none;width:18px;text-align:center;transition:transform .2s var(--ease)}
+.iline.open .chev{transform:rotate(90deg)}
+.iwarn{background:rgba(255,159,10,.12);color:var(--amb);border-radius:12px;padding:9px 12px;font-size:13px;line-height:1.4;margin:0 0 10px}
+#sheet .iwarn{margin:10px 0 0}
+.ixp{padding:0 0 14px}
+.ixp .swr{margin-bottom:6px;background:#2a2a2a}
+.swr.pay .swf{padding:8px 6px 8px 14px;gap:4px;background:#232325}
+.swr.pay .t1{font-weight:700;font-size:16px}.swr.pay .t2{color:var(--mut);font-size:12.5px;margin-top:1px}
+button.ib{min-height:40px;width:40px;padding:0;flex:none;background:none;color:#aeaeb2;display:grid;place-items:center;border-radius:10px}
+button.ib.del{color:var(--red)}
+button.ilog{width:100%;min-height:42px;margin-top:4px;background:rgba(48,209,88,.12);color:var(--grn)}
+.iplan{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-top:12px}
+.iplan input.num{width:120px;text-align:right;min-height:40px;font-size:16px;padding:0 10px}.iplan input.hrs{width:80px;text-align:right;min-height:40px;font-size:16px;padding:0 10px}
+.stack{display:flex;flex-direction:column;gap:8px}
