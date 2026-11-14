@@ -170,6 +170,7 @@ function toRows(st) {
     });
     st.recurring.forEach(r => put('Bills', [r.id, r.name, r2(r.amt), +r.day || 1, catById(r.cat).name, !!r.active, r.start || '', r.last || '']));
     put('Settings', ['hourly_rate', r2(st.settings.rate)]);
+    if (Array.isArray(st.settings.donutHide)) put('Settings', ['donut_hidden', st.settings.donutHide.map(id => st.cats.find(c => c.id === id)).filter(Boolean).map(c => c.name).join(', ')]);
     return R;
   });
 }
@@ -184,7 +185,11 @@ function parseSheet(raw) {
   });
   if (!st.cats.find(c => c.id === UNCAT)) { const u = st.cats.find(c => lc(c.name) === 'uncategorized'); if (u) u.id = UNCAT; else st.cats.push({ ...DEFAULT_CATS.find(c => c.id === UNCAT) }); }
   const catByName = n => st.cats.find(c => lc(c.name) === lc(n));
-  (raw.Settings || []).forEach(r => { if (lc(r[0]) === 'hourly_rate' && numOr(r[1]) > 0) st.settings.rate = r2(numOr(r[1])); });
+  (raw.Settings || []).forEach(r => {
+    if (lc(r[0]) === 'hourly_rate' && numOr(r[1]) > 0) st.settings.rate = r2(numOr(r[1]));
+    // donut_hidden: comma-separated category names left out of Home's "Where it went" chart (row absent = default: Rent)
+    if (lc(r[0]) === 'donut_hidden') st.settings.donutHide = str(r[1]).split(',').map(x => catByName(x.trim())).filter(Boolean).map(c => c.id).filter((v, i, a) => a.indexOf(v) === i);
+  });
   const mo = mk => st.months[mk] || (st.months[mk] = { budgets: {}, income: [], recurDone: {} });
   (raw.Budgets || []).forEach(r => { const mk = normMonth(r[0]), c = catByName(r[1]); if (!mk || !c) return; const m = mo(mk); if (m.budgets[c.id] == null) m.budgets[c.id] = r2(numOr(r[2])); });
   const sheetActual = {};

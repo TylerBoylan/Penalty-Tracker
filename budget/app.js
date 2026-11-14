@@ -324,9 +324,17 @@ function delTx(id) {
 }
 
 /* ---------- charts ---------- */
+// Categories left out of Home's "Where it went" chart only (still counted everywhere else). Default: Rent.
+function donutHidden() {
+  const ids = Array.isArray(S.settings.donutHide) ? S.settings.donutHide : S.cats.filter(c => c.name.trim().toLowerCase() === 'rent').map(c => c.id);
+  return S.cats.filter(c => ids.includes(c.id));
+}
 function donut(st) {
-  const items = S.cats.map(c => ({ c, v: st.byCat[c.id] || 0 })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
+  const hid = donutHidden(), hidIds = hid.map(c => c.id);
+  const items = S.cats.filter(c => !hidIds.includes(c.id)).map(c => ({ c, v: st.byCat[c.id] || 0 })).filter(x => x.v > 0).sort((a, b) => b.v - a.v);
   const total = sum(items.map(x => x.v));
+  const excl = !hid.length ? 'spent' : 'spent, excl. ' + (hid.length === 1 && hid[0].name.length <= 9 ? hid[0].name : hid.length + ' hidden');
+  const foot = hid.length ? `<button class="lnk tiny dfoot" id="d-hidden">${esc(hid.map(c => c.name + ' hidden · ' + money(st.byCat[c.id] || 0)).join(' · '))} ›</button>` : '';
   const R = 54, C = 2 * Math.PI * R; let off = 0;
   const segs = items.map(x => {
     const len = x.v / total * C, gap = items.length > 1 ? Math.min(2.5, len * 0.3) : 0;
@@ -338,8 +346,8 @@ function donut(st) {
     (rest.length ? `<div><span class="dot" style="background:#444"></span><span>${rest.length} more</span><b>${Math.round(sum(rest.map(x => x.v)) / total * 100)}%</b></div>` : '');
   return `<div class="card"><div class="ctitle"><b>Where it went</b><span class="sub">${items.length} categor${items.length === 1 ? 'y' : 'ies'}</span></div>
   ${total > 0 ? `<div class="donut"><svg viewBox="0 0 140 140" role="img" aria-label="Spending by category"><circle cx="70" cy="70" r="${R}" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="18"/>${segs}
-  <text x="70" y="70" text-anchor="middle" fill="#fff" font-size="18" font-weight="800">${esc(kmoney(total))}</text><text x="70" y="86" text-anchor="middle" fill="#8e8e93" font-size="10">spent</text></svg><div class="legend">${leg}</div></div>`
-    : '<div class="sub" style="padding:30px 0;text-align:center">No spending yet this month</div>'}</div>`;
+  <text x="70" y="70" text-anchor="middle" fill="#fff" font-size="18" font-weight="800">${esc(kmoney(total))}</text><text x="70" y="85" text-anchor="middle" fill="#8e8e93" font-size="${hid.length ? 8.5 : 10}">${esc(excl)}</text></svg><div class="legend">${leg}</div></div>`
+    : `<div class="sub" style="padding:30px 0;text-align:center">No ${hid.length ? 'other ' : ''}spending yet this month</div>`}${foot}</div>`;
 }
 function lineChart(mk, st) {
   const D = daysIn(mk), cm = curMK(), W = 320, H = 130, P = 6;
@@ -425,6 +433,7 @@ function renderHome() {
   $('#v-home').innerHTML = h; bindBanner($('#v-home'));
   animBars('#v-home');
   bindTx($('#v-home'));
+  const dh = $('#d-hidden'); if (dh) dh.onclick = () => { go('set'); requestAnimationFrame(() => { const x = $('#s-donut'); if (x) x.scrollIntoView({ block: 'center' }); }); };
   $$('#v-home [data-c]').forEach(r => r.onclick = () => { txF = { q: '', type: 'exp', cat: r.dataset.c, scope: 'month' }; go('tx'); });
   $('#h-plan').onclick = () => { planTab = 'cats'; go('plan'); };
   $('#h-inc').onclick = () => { planTab = 'inc'; go('plan'); };
@@ -753,6 +762,8 @@ function renderSet() {
     : `<div class="seg"><button data-mode="sheet">Google Sheet</button><button class="on" data-mode="local">This device only</button></div>
    <div class="sub" style="line-height:1.45">Right now your budget is stored only in this browser. Connect a Google Sheet to keep it in your Google account and let your assistant add transactions.</div>`;
   $('#v-set').innerHTML = `<h2>Storage</h2><div class="card">${sheetCard}</div>
+  <h2>Where it went</h2><div class="card" id="s-donut"><div style="font-weight:600;margin-bottom:4px">Hide from "Where it went"</div><div class="sub" style="line-height:1.45;margin-bottom:10px">Hidden categories are left out of the Home chart only. They still count in Left to spend, budgets, Activity and your sheet.</div>
+   <div class="chips" style="flex-wrap:wrap">${S.cats.map(c => { const on = donutHidden().some(x => x.id === c.id); return `<button class="chip ${on ? 'on' : ''}" data-dh="${esc(c.id)}" aria-pressed="${on}"><span class="dot" style="background:${esc(c.color)}"></span>${esc(c.name)}${on ? ' · hidden' : ''}</button>`; }).join('')}</div></div>
   <h2>Pay</h2><div class="card"><label style="margin-top:0">Hourly rate (used by hourly income lines)</label><div class="row"><div class="money-in" style="flex:1"><input id="s-rate" inputmode="decimal" value="${esc(S.settings.rate)}"></div><button class="pri" id="s-save" style="flex:none">Save</button></div></div>
   <h2>Import</h2><div class="card"><button class="pri" id="s-imp" style="width:100%">Import CSV or JSON</button>
    <div class="sub" style="margin-top:10px;line-height:1.45">Bank and card CSVs (you pick the columns), Stacked CSV/JSON files, or a full backup. Duplicates are detected and skipped.</div>
@@ -777,6 +788,11 @@ function renderSet() {
     if (id !== SY.sheetId || !hasToken()) connectSheet(id); else { sync('manual'); toast('Syncing…'); }
   };
   const so = $('#s-out'); if (so) so.onclick = () => { signOut(); go('set'); toast('Signed out of Google. Your sheet is unchanged.'); };
+  $$('[data-dh]').forEach(b => b.onclick = () => {
+    const cur = donutHidden().map(c => c.id), id = b.dataset.dh;
+    S.settings.donutHide = cur.includes(id) ? cur.filter(x => x !== id) : cur.concat(id);
+    save(); renderSet(); toast(cur.includes(id) ? 'Showing ' + catById(id).name + ' in Where it went' : 'Hiding ' + catById(id).name + ' from Where it went');
+  });
   $('#s-save').onclick = () => { const v = parseAmt($('#s-rate').value); if (!isFinite(v) || v <= 0) return toast('Enter a valid rate'); S.settings.rate = r2(v); save(); toast('Rate saved: ' + money(v) + '/hr'); };
   $('#s-imp').onclick = () => pickFile();
   $('#s-rest').onclick = () => pickFile();
