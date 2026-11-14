@@ -26,11 +26,37 @@ const normMonth = v => { const s = str(v); let m = s.match(/^(\d{4})-(\d{1,2})$/
 const nowISO = () => new Date().toISOString();
 const sheetIdFrom = v => { const s = str(v); const m = s.match(/\/d\/([A-Za-z0-9_-]{20,})/); if (m) return m[1]; return /^[A-Za-z0-9_-]{20,}$/.test(s) ? s : ''; };
 
+/* ---------- remembering the sheet (localStorage + IndexedDB + cookie) ----------
+   iOS can wipe one store, and a Home Screen app doesn't share storage with Safari, so the sheet ID
+   (never in the public files) is kept in three places on this device and recovered from any of them. */
+const cacheKey = id => K_CACHE + ':' + id;
+const ckPath = () => location.pathname.replace(/[^/]*$/, '') || '/';
+function cookieGet() { try { const m = document.cookie.match(/(?:^|;\s*)stacked_sid=([A-Za-z0-9_-]{20,})/); return m ? m[1] : ''; } catch (e) { return ''; } }
+function cookieSet(id) { try { document.cookie = `stacked_sid=${id || ''}; path=${ckPath()}; max-age=${id ? 34560000 : 0}; SameSite=Strict${location.protocol === 'https:' ? '; Secure' : ''}`; } catch (e) { } }
+let idbP = null;
+function idb() {
+  if (!idbP) idbP = new Promise((res, rej) => {
+    try { const r = indexedDB.open('stacked', 1); r.onupgradeneeded = () => r.result.createObjectStore('kv'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); }
+  });
+  return idbP;
+}
+async function idbGet(k) { const db = await idb(); return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function idbSet(k, v) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction('kv', 'readwrite'); if (v === undefined) tx.objectStore('kv').delete(k); else tx.objectStore('kv').put(v, k); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+const idbSafe = (k, v) => idbSet(k, v).catch(() => { });
+function lsCacheIds() { const out = []; try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(K_CACHE + ':')) { const c = JSON.parse(localStorage.getItem(k) || 'null'); out.push({ id: k.slice(K_CACHE.length + 1), at: (c && c.savedAt) || 0 }); } } } catch (e) { } return out.sort((a, b) => b.at - a.at).map(x => x.id); }
+
 const SY = { mode: 'local', sheetId: '', base: null, status: 'idle', msg: '', lastSync: 0, syncing: false, again: false, token: '', exp: 0, tabIds: null, timer: 0, title: '' };
 (() => {
   try {
+    // one-time move of the old single cache to a per-sheet key, so switching sheets never drops queued changes
+    const old = localStorage.getItem(K_CACHE);
+    if (old) { const c = JSON.parse(old); if (c && c.sheetId && !localStorage.getItem(cacheKey(c.sheetId))) localStorage.setItem(cacheKey(c.sheetId), old); localStorage.removeItem(K_CACHE); }
+  } catch (e) { }
+  try {
     SY.sheetId = localStorage.getItem(K_SID) || '';
-    SY.mode = localStorage.getItem(K_MODE) === 'sheet' && SY.sheetId ? 'sheet' : 'local';
+    if (!SY.sheetId) { SY.sheetId = cookieGet() || lsCacheIds()[0] || ''; if (SY.sheetId) { SY.recovered = 'device'; localStorage.setItem(K_SID, SY.sheetId); } }
+    const md = localStorage.getItem(K_MODE);
+    SY.mode = SY.sheetId && (md === 'sheet' || (!md && SY.recovered)) ? 'sheet' : 'local';
     const t = JSON.parse(sessionStorage.getItem(K_TOK) || 'null'); if (t && t.exp > Date.now()) { SY.token = t.token; SY.exp = t.exp; }
   } catch (e) { /* storage blocked */ }
 })();
@@ -88,7 +114,7 @@ async function gapi(path, opt = {}) {
   if (!hasToken()) throw Object.assign(new Error('Sign in with Google to sync.'), { auth: true });
   let r;
   try {
-    r = await fetch(GS_API + path, { method: opt.method || 'GET', headers: Object.assign({ Authorization: 'Bearer ' + SY.token }, opt.body ? { 'Content-Type': 'application/json' } : {}), body: opt.body ? JSON.stringify(opt.body) : undefined, cache: 'no-store' });
+    r = await fetch(opt.url || GS_API + path, { method: opt.method || 'GET', headers: Object.assign({ Authorization: 'Bearer ' + SY.token }, opt.body ? { 'Content-Type': 'application/json' } : {}), body: opt.body ? JSON.stringify(opt.body) : undefined, cache: 'no-store' });
   } catch (e) { throw Object.assign(new Error('Offline. Changes are saved on this device and will sync later.'), { offline: true }); }
   if (r.status === 401) { clearToken(); throw Object.assign(new Error('Google sign-in expired. Tap to sign in again.'), { auth: true }); }
   if (!r.ok) {
@@ -100,8 +126,11 @@ async function gapi(path, opt = {}) {
 const sidPath = () => encodeURIComponent(SY.sheetId);
 async function ensureTabs() {
   const j = await gapi(sidPath() + '?fields=properties.title,sheets.properties(sheetId,title)');
-  SY.title = j.properties && j.properties.title || ''; SY.tabIds = {};
-  (j.sheets || []).forEach(s => SY.tabIds[s.properties.title] = s.properties.sheetId);
+  const title = j.properties && j.properties.title || '', ids = {};
+  (j.sheets || []).forEach(s => ids[s.properties.title] = s.properties.sheetId);
+  // Never set up Stacked tabs inside some other spreadsheet (e.g. an old budget workbook pasted by mistake).
+  if (ids.Transactions == null) throw Object.assign(new Error(`"${title || 'That spreadsheet'}" isn't a Stacked sheet (it has no Transactions tab). Check the link in Settings.`), { notStacked: true });
+  SY.title = title; SY.tabIds = ids;
   const missing = TAB_ORDER.filter(t => SY.tabIds[t] == null);
   if (missing.length) {
     const r = await gapi(sidPath() + ':batchUpdate', { method: 'POST', body: { requests: missing.map(t => ({ addSheet: { properties: { title: t, gridProperties: { frozenRowCount: 1 } } } })) } });
@@ -229,9 +258,14 @@ async function commit(ops, fresh) {
 }
 
 /* ---------- sync engine ---------- */
-function persistSheetCache() { try { localStorage.setItem(K_CACHE, JSON.stringify({ sheetId: SY.sheetId, S, base: SY.base, lastSync: SY.lastSync })); } catch (e) { toast('Could not save the offline copy: storage full?'); } }
+let idbT = 0;
+function persistSheetCache() {
+  const c = { sheetId: SY.sheetId, S, base: SY.base, lastSync: SY.lastSync, savedAt: Date.now() }, js = JSON.stringify(c);
+  try { localStorage.setItem(cacheKey(SY.sheetId), js); } catch (e) { toast('Could not save the offline copy: storage full?'); }
+  clearTimeout(idbT); idbT = setTimeout(() => idbSafe('cache:' + c.sheetId, js), 250); // second copy, in case iOS clears localStorage
+}
 function loadSheetCache() {
-  try { const c = JSON.parse(localStorage.getItem(K_CACHE) || 'null'); if (c && c.sheetId === SY.sheetId && c.S) { SY.base = c.base || null; SY.lastSync = c.lastSync || 0; return normalize(c.S); } } catch (e) { }
+  try { const c = JSON.parse(localStorage.getItem(cacheKey(SY.sheetId)) || 'null'); if (c && c.sheetId === SY.sheetId && c.S) { SY.base = c.base || null; SY.lastSync = c.lastSync || 0; return normalize(c.S); } } catch (e) { }
   SY.base = null; SY.lastSync = 0; return null;
 }
 const pendingCount = () => SY.mode === 'sheet' && SY.base ? diffRows(SY.base, toRows(S)).length : 0;
@@ -266,7 +300,7 @@ async function sync(reason) {
   } catch (e) {
     if (e.auth) setStatus('signin', e.message);
     else if (e.offline) setStatus('offline', e.message);
-    else { setStatus('error', e.message); if (e.status === 404 || e.status === 403) SY.tabIds = null; }
+    else { setStatus('error', e.message); if (e.status === 404 || e.status === 403 || e.notStacked) SY.tabIds = null; }
     if (!e.auth && !e.offline) console.warn('sync failed:', e.message);
   } finally {
     SY.syncing = false;
@@ -280,16 +314,48 @@ function setStatus(s, msg) {
   if (prev !== s && (loud(prev) || loud(s)) && typeof safeRender === 'function' && typeof view !== 'undefined') safeRender();
 }
 function setMode(mode) {
-  SY.mode = mode; try { localStorage.setItem(K_MODE, mode); } catch (e) { }
+  SY.mode = mode; try { localStorage.setItem(K_MODE, mode); } catch (e) { } idbSafe('mode', mode);
   if (mode === 'sheet') { SY.tabIds = null; S = loadSheetCache() || emptySheetState(); }
   else { clearTimeout(SY.timer); S = load(); }
   if (typeof renderSync === 'function') renderSync();
 }
 function emptySheetState() { const s = blank(); s.cats = []; s.v = VER; return normalize(s); }
-function setSheetId(id) { SY.sheetId = id; SY.tabIds = null; SY.base = null; try { localStorage.setItem(K_SID, id); } catch (e) { } }
+function setSheetId(id) { SY.sheetId = id; SY.tabIds = null; SY.base = null; SY.recovered = ''; try { localStorage.setItem(K_SID, id); } catch (e) { } cookieSet(id); idbSafe('sid', id); }
+// Runs after boot: fills in anything iOS wiped from localStorage using the IndexedDB copy. Never overwrites newer data.
+async function recoverFromIdb() {
+  let sid, mode, cache;
+  try { [sid, mode] = await Promise.all([idbGet('sid'), idbGet('mode')]); } catch (e) { return false; }
+  let changed = false;
+  if (!SY.sheetId && sid) {
+    let md = null; try { md = localStorage.getItem(K_MODE); } catch (e) { }
+    SY.sheetId = sid; SY.recovered = 'idb'; try { localStorage.setItem(K_SID, sid); } catch (e) { }
+    if (md !== 'local' && mode !== 'local' && !(S.txns.length && SY.mode === 'local')) { SY.mode = 'sheet'; try { localStorage.setItem(K_MODE, 'sheet'); } catch (e) { } S = loadSheetCache() || emptySheetState(); }
+    changed = true;
+  }
+  if (SY.sheetId) { cookieSet(SY.sheetId); if (sid !== SY.sheetId) idbSafe('sid', SY.sheetId); }
+  if (SY.mode === 'sheet') {
+    let have = false; try { have = !!localStorage.getItem(cacheKey(SY.sheetId)); } catch (e) { }
+    if (!have) {
+      try { cache = JSON.parse(await idbGet('cache:' + SY.sheetId) || 'null'); } catch (e) { cache = null; }
+      if (cache && cache.S && !S.txns.length && !SY.lastSync) { SY.base = cache.base || null; SY.lastSync = cache.lastSync || 0; S = normalize(cache.S); persistSheetCache(); changed = true; }
+    }
+  }
+  return changed;
+}
+// Brand-new spreadsheet, only when the user explicitly asks for one.
+async function createStackedSheet() {
+  const j = await gapi('', { url: GS_API.replace(/\/$/, ''), method: 'POST', body: { properties: { title: 'Stacked Budget Data' }, sheets: TAB_ORDER.map(t => ({ properties: { title: t, gridProperties: { frozenRowCount: 1 } } })) } });
+  setSheetId(j.spreadsheetId);
+  await gapi(sidPath() + '/values:batchUpdate', { method: 'POST', body: { valueInputOption: 'RAW', data: TAB_ORDER.map(t => ({ range: t + '!A1', values: [TABS[t].cols] })) } });
+  const st = blank(); st.demo = false; S = normalize(st); SY.base = {}; TAB_ORDER.forEach(t => SY.base[t] = {});
+  SY.mode = 'sheet'; try { localStorage.setItem(K_MODE, 'sheet'); } catch (e) { } idbSafe('mode', 'sheet');
+  persistSheetCache();
+  return j.spreadsheetId;
+}
 async function connectSheet(id) {
   // call from a tap: signIn() opens Google's popup
-  if (id && id !== SY.sheetId) { setSheetId(id); try { localStorage.removeItem(K_CACHE); } catch (e) { } }
+  if (id && id !== SY.sheetId) setSheetId(id); // other sheets' cached copies (and queued changes) stay under their own keys
+  else if (id) { cookieSet(id); idbSafe('sid', id); }
   setMode('sheet'); go(view === 'set' ? 'set' : 'home');
   if (!hasToken()) { try { await signIn(); } catch (e) { setStatus('signin', e.message); toast(e.message); return; } }
   await sync('connect');

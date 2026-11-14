@@ -212,17 +212,35 @@ function bindBanner(root) {
 }
 function promptSheetId() {
   loadGis().catch(() => { });
-  openSheet(`<h3>Connect your Google Sheet</h3>
-  <div class="sub" style="line-height:1.45">Paste the link (or ID) of your <b>Stacked Budget Data</b> spreadsheet. It's saved only in this browser, never in the app's public files.</div>
-  <label>Spreadsheet link or ID</label><input id="p-sid" placeholder="https://docs.google.com/spreadsheets/d/…" autocomplete="off" value="${esc(SY.sheetId)}">
-  <div class="row" style="margin-top:16px"><button id="p-x">Cancel</button><button class="pri" id="p-go">Sign in with Google</button></div>`, sh => {
+  openSheet(`<h3>Connect your Stacked sheet</h3>
+  <div class="sub" style="line-height:1.45">Paste the link to your <b>Stacked Budget Data</b> spreadsheet. In the Google Sheets app open it, tap <b>⋮ › Share &amp; export › Copy link</b>, then paste it here. It's saved only on this device.</div>
+  <label>Your sheet link</label><div class="row"><input id="p-sid" placeholder="https://docs.google.com/spreadsheets/d/…" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(SY.sheetId)}"><button id="p-paste" style="flex:none">Paste</button></div>
+  <button class="pri" id="p-go" style="width:100%;margin-top:14px">Connect &amp; sign in with Google</button>
+  <a class="sub" href="https://docs.google.com/spreadsheets/u/0/?q=Stacked%20Budget%20Data" target="_blank" rel="noopener noreferrer" style="display:block;text-align:center;margin-top:14px;color:#fff">Find it in Google Sheets ↗</a>
+  <div class="row" style="margin-top:18px"><button id="p-x">Cancel</button><button class="lnk sub" id="p-new" style="flex:none">No sheet yet? Create a new one</button></div>`, sh => {
+    const inp = $('#p-sid', sh);
     $('#p-x', sh).onclick = closeSheet;
+    $('#p-paste', sh).onclick = async () => {
+      try { const t = await navigator.clipboard.readText(); const id = sheetIdFrom(t); if (id) inp.value = t.trim(); else toast('The clipboard doesn\'t have a Google Sheets link'); }
+      catch (e) { inp.focus(); toast('Long-press the box and tap Paste'); }
+    };
     $('#p-go', sh).onclick = () => {
-      const id = sheetIdFrom($('#p-sid', sh).value);
-      if (!id) { toast('That doesn\'t look like a Google Sheets link or ID'); return $('#p-sid', sh).focus(); }
+      const id = sheetIdFrom(inp.value);
+      if (!id) { toast('That doesn\'t look like a Google Sheets link'); return inp.focus(); }
       closeSheet(); connectSheet(id);
     };
+    $('#p-new', sh).onclick = () => {
+      if (sheetIdFrom(inp.value) || SY.sheetId) { if (!confirm('You already have a sheet link saved. Creating a new sheet starts EMPTY and won\'t include anything from it. Create a new one anyway?')) return; }
+      if (!confirm('Create a NEW, empty "Stacked Budget Data" spreadsheet in your Google Drive?\n\nIf you already have one, tap Cancel and paste its link instead.')) return;
+      closeSheet(); createNewSheet();
+    };
   });
+}
+async function createNewSheet() {
+  if (!hasToken()) { try { await signIn(); } catch (e) { toast(e.message); return; } }
+  try { setStatus('syncing'); await createStackedSheet(); } catch (e) { setStatus(hasToken() ? 'error' : 'signin', e.message); toast('Could not create the sheet: ' + e.message); return; }
+  vMK = curMK(); go('home'); await sync('connect');
+  toast(SY.status === 'ok' ? 'New sheet created: Stacked Budget Data' : SY.msg || 'Created, but the first sync failed');
 }
 
 /* ---------- toast ---------- */
@@ -369,8 +387,8 @@ function renderHome() {
   }
   if (!hasAny) {
     h += `<div class="card empty"><div class="ill"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v4c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 10v4c0 1.7 3.1 3 7 3s7-1.3 7-3v-4M5 14v4c0 1.7 3.1 3 7 3s7-1.3 7-3v-4"/></svg></div>
-    <h3>Welcome to Stacked</h3><p>Your budget, minus the spreadsheet. Everything stays on this device. Nothing is uploaded anywhere.</p>
-    <div class="btns"><button class="pri" id="e-sheet">Connect my Google Sheet</button><button id="e-plan">Set a budget on this device only</button><button id="e-imp">Import a CSV or backup</button><button class="lnk sub" id="e-demo" style="margin-top:6px">Try it with demo data (fake numbers)</button></div></div>`;
+    <h3>Welcome to Stacked</h3><p>Your budget, minus the spreadsheet. Keep it in your own Google Sheet or only on this device. No servers, no tracking.</p>
+    <div class="btns"><button class="pri" id="e-sheet">${SY.sheetId ? 'Reconnect my Google Sheet' : 'Connect my Google Sheet'}</button><button id="e-plan">Set a budget on this device only</button><button id="e-imp">Import a CSV or backup</button><button class="lnk sub" id="e-demo" style="margin-top:6px">Try it with demo data (fake numbers)</button></div></div>`;
     $('#v-home').innerHTML = h; bindBanner($('#v-home'));
     $('#e-sheet').onclick = () => SY.sheetId ? connectSheet(SY.sheetId) : promptSheetId();
     $('#e-plan').onclick = () => { planTab = 'cats'; go('plan'); };
@@ -770,9 +788,10 @@ function renderSet() {
 }
 function clearAll() {
   if (inSheet()) {
-    if (!confirm('Disconnect and remove the copy stored on this device? Your Google Sheet is not changed.')) return;
-    try { localStorage.removeItem(K_CACHE); } catch (e) { }
-    signOut(); setMode('local'); vMK = curMK(); go('home'); toast('Disconnected. Your sheet is untouched.'); return;
+    const n = pendingCount();
+    if (!confirm(n ? `Disconnect this device? ${n} change${n > 1 ? 's' : ''} haven't reached your Google Sheet yet. They stay saved on this device and sync when you reconnect. Your sheet is not changed.` : 'Disconnect and remove the copy stored on this device? Your Google Sheet is not changed.')) return;
+    if (!n) { try { localStorage.removeItem(cacheKey(SY.sheetId)); } catch (e) { } idbSafe('cache:' + SY.sheetId, undefined); }
+    signOut(); setMode('local'); vMK = curMK(); go('home'); toast(n ? 'Disconnected. Unsynced changes kept on this device.' : 'Disconnected. Your sheet is untouched.'); return;
   }
   if (!confirm(S.demo ? 'Clear the demo data?' : 'Erase ALL budget data on this device? Make a backup first if you might want it back.')) return;
   S = blank(); save(); vMK = curMK(); rollover(); go('home'); toast('All clear');
@@ -995,16 +1014,21 @@ function loadDemo() {
 
 /* ---------- boot ---------- */
 function boot() {
-  const hm = location.hash.match(/(?:^#|&)sheet=([A-Za-z0-9_-]{20,})/);
-  if (hm) { // one-time setup link: ...#sheet=<id>. The hash never reaches any server and is removed right away.
-    if (hm[1] !== SY.sheetId) { setSheetId(hm[1]); try { localStorage.removeItem(K_CACHE); } catch (e) { } }
-    history.replaceState(null, '', location.pathname + location.search);
-    setMode('sheet');
-  }
+  // one-time setup link: ...#sheet=<id> (preferred: the hash never reaches a server) or ...?sheet=<id>. Removed from the address bar right away.
+  const qs = new URLSearchParams(location.search), qid = sheetIdFrom(qs.get('sheet') || '');
+  const hm = location.hash.match(/(?:^#|&)sheet=([A-Za-z0-9_-]{20,})/), lid = hm ? hm[1] : qid;
+  if (hm || qs.has('sheet')) { qs.delete('sheet'); history.replaceState(null, '', location.pathname + (qs.toString() ? '?' + qs : '')); }
+  if (lid) { if (lid !== SY.sheetId) setSheetId(lid); else { cookieSet(lid); idbSafe('sid', lid); } setMode('sheet'); }
   $('#sync').onclick = syncTap;
   const r = rollover(); vMK = curMK(); vYear = +vMK.slice(0, 4);
   go('home'); renderSync();
   if (inSheet()) { loadGis().catch(() => { }); if (hasToken()) sync('open'); else setStatus('signin'); }
+  if (SY.recovered && inSheet()) setTimeout(() => toast('Reconnected to your saved Google Sheet'), 300);
+  recoverFromIdb().then(changed => {
+    if (!changed) return;
+    renderSync(); safeRender();
+    if (inSheet()) { loadGis().catch(() => { }); if (hasToken()) sync('open'); else setStatus('signin'); toast('Reconnected to your saved Google Sheet'); }
+  });
   let lastFocus = 0;
   const reread = () => { if (inSheet() && Date.now() - lastFocus > 4000) { lastFocus = Date.now(); sync('focus'); } };
   window.addEventListener('focus', reread);
