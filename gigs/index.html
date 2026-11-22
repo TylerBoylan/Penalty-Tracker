@@ -99,11 +99,20 @@ function hoursOf(s){
   return 0;
 }
 const grossOf=(s,set)=>hoursOf(s)*(s.rate!=null&&s.rate!==""?+s.rate:set.rate);
-// period for a shift date: days 1..split -> paid on 15th; split+1..end -> paid on 30th/last day
+// Days 1..split are paid on the 30th of that month (last day in Feb). Days after the split through month-end are paid on the 15th of the NEXT month.
+// Dec 15 pays Nov 16–Nov 30. Dec 30 pays Dec 1–Dec 15. A shift on the 15th is in the early window; the 31st is paid on the 15th of the next month. Dec 16–31 pay Jan 15.
 function periodFor(dateStr,set){
   const d=parseD(dateStr),y=d.getFullYear(),m=d.getMonth(),day=d.getDate(),sp=Math.min(set.split,lastDay(y,m)-1);
-  if(day<=sp)return{key:`${y}-${pad(m+1)}-A`,start:`${y}-${pad(m+1)}-01`,end:`${y}-${pad(m+1)}-${pad(sp)}`,payday:`${y}-${pad(m+1)}-15`};
-  return{key:`${y}-${pad(m+1)}-B`,start:`${y}-${pad(m+1)}-${pad(sp+1)}`,end:`${y}-${pad(m+1)}-${pad(lastDay(y,m))}`,payday:`${y}-${pad(m+1)}-${pad(secondPay(y,m))}`};
+  if(day<=sp)return{key:`${y}-${pad(m+1)}-A`,start:`${y}-${pad(m+1)}-01`,end:`${y}-${pad(m+1)}-${pad(sp)}`,payday:`${y}-${pad(m+1)}-${pad(secondPay(y,m))}`};
+  let py=y,pm=m+1;if(pm>11){pm=0;py++}
+  return{key:`${y}-${pad(m+1)}-B`,start:`${y}-${pad(m+1)}-${pad(sp+1)}`,end:`${y}-${pad(m+1)}-${pad(lastDay(y,m))}`,payday:`${py}-${pad(pm+1)}-15`};
+}
+// Work dates a payday covers. The 15th pays the previous month's late window; the 30th (or Feb's last day) pays this month's early window.
+function spanForPayday(paydayStr,set){
+  const d=parseD(paydayStr),y=d.getFullYear(),m=d.getMonth();
+  if(d.getDate()<=15){let py=y,pm=m-1;if(pm<0){pm=11;py--}const sp=Math.min(set.split,lastDay(py,pm)-1);return{start:`${py}-${pad(pm+1)}-${pad(sp+1)}`,end:`${py}-${pad(pm+1)}-${pad(lastDay(py,pm))}`}}
+  const sp=Math.min(set.split,lastDay(y,m)-1);
+  return{start:`${y}-${pad(m+1)}-01`,end:`${y}-${pad(m+1)}-${pad(sp)}`};
 }
 function nextPayday(todayStr){
   const t=parseD(todayStr);let y=t.getFullYear(),m=t.getMonth();
@@ -153,7 +162,7 @@ function mergeSchedule(shifts,imported,games){shifts=shifts.slice();imported=imp
 function taxRate(set){const n=k=>+set[k]||0;if(set.taxMode!=="detailed")return n("stubRate");
  const fica=set.fica===false?0:(set.payType==="1099"?15.3*0.9235:7.65);return n("fedRate")+n("paRate")+n("localRate")+fica}
 function taxEst(g,set){const t=Math.round(g*taxRate(set))/100;return{gross:g,tax:t,net:Math.round((g-t)*100)/100}}
-if(typeof module!=="undefined")module.exports={taxRate,taxEst,periodFor,nextPayday,hoursOf,grossOf,totals,seasonRange,toCSV,parseCSV,DEF_SET,TEAMS,TEAM_NAMES,logoURL,ytd,series,nextGame,mergeSchedule,gameToShift,posFor};
+if(typeof module!=="undefined")module.exports={taxRate,taxEst,periodFor,spanForPayday,nextPayday,hoursOf,grossOf,totals,seasonRange,toCSV,parseCSV,DEF_SET,TEAMS,TEAM_NAMES,logoURL,ytd,series,nextGame,mergeSchedule,gameToShift,posFor};
 /*LOGIC-END*/
 if(typeof document!=="undefined"){
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s),money=n=>"$"+n.toFixed(2),money0=n=>"$"+Math.round(n).toLocaleString(),hrs=n=>(Math.round(n*100)/100)+"h";
@@ -169,6 +178,7 @@ const save=()=>{localStorage.setItem("gt_imported",JSON.stringify(imported));loc
 const today=()=>window.__TODAY__||ymd(new Date()),net=g=>taxEst(g,set).net;
 const fmtD=s=>parseD(s).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric",year:"numeric"});
 const fmtS=s=>parseD(s).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
+const fmtPay=s=>parseD(s).toLocaleDateString(undefined,{month:"short",day:"numeric"});
 const t12=t=>{if(!t)return"";let[h,m]=t.split(":").map(Number);return(h%12||12)+":"+pad(m)+(h<12?" AM":" PM")};
 // team logo with text-badge fallback (onerror swaps to badge)
 const logo=(a,big)=>{if(!a)return"";const u=logoURL(a);return `<span class="lg${big?" big2":""}">${u?`<img src="${u}" alt="${esc(a)}" loading="lazy" onerror="this.outerHTML='<span class=badge>${esc(a)}</span>'">`:`<span class="badge">${esc(a)}</span>`}</span>`};
@@ -186,7 +196,7 @@ const netLine=g=>"",aside=()=>set.payType==="1099"?"Set aside":"Est. taxes",
 // shift row with swipe-left to reveal Edit/Delete; tap the row toggles it too
 function shiftRow(s){return `<div class="swr" data-id="${esc(s.id)}"><div class="swa"><button class="ed" data-e="${esc(s.id)}">Edit</button><button class="dl" data-d="${esc(s.id)}">Delete</button></div>
  <div class="swf ${s.status=="worked"?"w":"u"}" role="button" tabindex="0" aria-label="Shift actions"><div class="row"><div style="flex:3">${matchup(s)}</div><b style="text-align:right;flex:1">${money(grossOf(s,set))}</b></div>
- <div class="sub" style="margin-top:6px">${fmtD(s.date)}${s.start?" · "+t12(s.start):""} · ${esc(s.position)} · ${esc(s.mode)} · ${hrs(hoursOf(s))}</div>
+ <div class="sub" style="margin-top:6px">${fmtD(s.date)}${s.start?" · "+t12(s.start):""} · ${esc(s.position)} · ${esc(s.mode)} · ${hrs(hoursOf(s))} · pays ${fmtPay(periodFor(s.date,set).payday)}</div>
  ${s.confirm?'<div class="flag">⚠ hours estimated – confirm</div>':""}${s.notes?`<div class="sub" style="margin-top:4px">${esc(s.notes)}</div>`:""}
  <div class="row" style="margin-top:10px">${s.status!="worked"?`<button class="pri" data-w="${esc(s.id)}">Mark worked</button>`:`<button data-u="${esc(s.id)}">Undo worked</button>`}</div></div></div>`}
 function bindRows(root){
@@ -221,16 +231,16 @@ let statsOpen=false;
 function render(){
  const T=totals(shifts,set,today()),Y=ytd(shifts,set,today());
  if(view=="dash"){
-  const ng=nextGame(shifts,today()),tdy=today(),ups=shifts.filter(s=>s.status!=="worked"&&s.date>=tdy).sort((a,b)=>(a.date+(a.start||"")).localeCompare(b.date+(b.start||"")));
+  const ng=nextGame(shifts,today()),tdy=today(),ups=shifts.filter(s=>s.status!=="worked"&&s.date>=tdy).sort((a,b)=>(a.date+(a.start||"")).localeCompare(b.date+(b.start||""))),cov=spanForPayday(T.nextPayday,set);
   const pos=Object.entries(T.byPos).map(([k,v])=>`<div class="row" style="padding:6px 0"><span>${esc(k)}</span><span class="sub">${v.n} · ${hrs(v.h)}</span><span style="text-align:right">${money(v.g)}</span></div>`).join("")||'<div class="sub">No worked shifts yet</div>';
-  $("#v-dash").innerHTML=`<div class="card hero"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px"><div><div class="sub" style="font-size:10px;letter-spacing:1px">NEXT PAYDAY · ${fmtD(T.nextPayday)}</div><div class="big">${money(T.nextPay.g)}</div></div><div class="sub" style="font-size:11px;text-align:right">${T.nextPay.n} shift(s) · ${hrs(T.nextPay.h)}<br>worked ${money(T.nextPayWorked.g)}</div></div>
+  $("#v-dash").innerHTML=`<div class="card hero"><div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px"><div><div class="sub" style="font-size:10px;letter-spacing:1px">NEXT PAYDAY · ${fmtD(T.nextPayday)}</div><div class="sub" style="font-size:11px">Shifts ${cov.start.slice(5)}–${cov.end.slice(5)}</div><div class="big">${money(T.nextPay.g)}</div></div><div class="sub" style="font-size:11px;text-align:right">${T.nextPay.n} shift(s) · ${hrs(T.nextPay.h)}<br>worked ${money(T.nextPayWorked.g)}</div></div>
   <div class="hl">${heroTax(T.nextPay.g)}</div><div class="sub" style="font-size:9px;opacity:.7;margin-top:1px">Estimate only, not tax advice</div></div>
   <div style="display:flex;align-items:baseline;justify-content:space-between"><h2>Upcoming games</h2>${ups.length>6?'<a href="#" id="seeall" class="sub" style="font-size:12px;color:#fff">See all ('+ups.length+') ›</a>':""}</div>${ups.length?ups.slice(0,6).map(ng=>`<div class="card ngc" data-ng="${esc(ng.id)}" style="cursor:pointer"><div class="match"><div class="side">${logo(ng.away,1)}<span>${esc(ng.away||"—")}</span></div><div class="at">@</div><div class="side">${logo(ng.home,1)}<span>${esc(ng.home||"—")}</span></div></div>
-   <div class="row"><div><div style="font-weight:600;white-space:nowrap">${fmtS(ng.date)}${ng.start?" · "+t12(ng.start):""}</div><div class="sub">${esc(ng.position)} · ${esc(ng.mode)} · ${hrs(hoursOf(ng))}</div></div><div style="text-align:right"><div class="pay" style="font-size:22px;font-weight:700">${money(grossOf(ng,set))}</div><div class="sub">est. pay</div></div></div>
+   <div class="row"><div><div style="font-weight:600;white-space:nowrap">${fmtS(ng.date)}${ng.start?" · "+t12(ng.start):""}</div><div class="sub">${esc(ng.position)} · ${esc(ng.mode)} · ${hrs(hoursOf(ng))} · pays ${fmtPay(periodFor(ng.date,set).payday)}</div></div><div style="text-align:right"><div class="pay" style="font-size:22px;font-weight:700">${money(grossOf(ng,set))}</div><div class="sub">est. pay</div></div></div>
    ${ng.confirm?'<div class="flag">⚠ hours estimated – confirm</div>':""}</div>`).join(""):'<div class="card sub">No upcoming games</div>'}
   <div class="card stt" id="stt" role="button" tabindex="0" aria-expanded="${statsOpen}"><span style="font-weight:600">Stats <span class="chev">${statsOpen?"⌄":"›"}</span></span><span class="sub">This month <b style="color:#fff">${money(T.month.g)}</b></span></div>
   <div id="stx" style="display:${statsOpen?"block":"none"}"><div class="card sl">
-  <div class="srow"><div><div>This period (${T.periodInfo.start.slice(5)}–${T.periodInfo.end.slice(5)})</div><div class="sub">${hrs(T.period.h)} · ${T.period.n} games</div></div><b>${money(T.period.g)}</b></div>
+  <div class="srow"><div><div>This period (${T.periodInfo.start.slice(5)}–${T.periodInfo.end.slice(5)})</div><div class="sub">${hrs(T.period.h)} · ${T.period.n} games · pays ${fmtPay(T.periodInfo.payday)}</div></div><b>${money(T.period.g)}</b></div>
   <div class="srow"><div><div>Year to date</div><div class="sub">${hrs(Y.h)} · ${Y.n} games</div></div><b>${money(Y.g)}</b></div>
   <div class="srow"><div><div>This month</div><div class="sub">${hrs(T.month.h)} · ${T.month.n} games</div></div><b>${money(T.month.g)}</b></div>
   <div class="srow"><div><div>Season to date</div><div class="sub">${hrs(T.season.h)} · ${T.season.n} games</div></div><b>${money(T.season.g)}</b></div>
@@ -281,8 +291,8 @@ function render(){
   <div class="sub" id="f-calc" style="margin-top:8px"></div>
   <div class="row" style="margin-top:12px"><button class="pri" id="f-save">Save</button>${editId?'<button class="dng" id="f-del">Delete</button>':""}</div></div>`;
   let mode=s.mode,st=s.status;
-  const calc=()=>{const h=hoursOf({hours:$("#f-hours").value,start:$("#f-start").value,end:$("#f-end").value});$("#f-calc").textContent=`${hrs(h)} × ${money(+set.rate)} = ${money(h*set.rate)} gross${netLine(h*set.rate)}`};
-  ["#f-hours","#f-start","#f-end"].forEach(i=>$(i).oninput=calc);calc();
+  const calc=()=>{const h=hoursOf({hours:$("#f-hours").value,start:$("#f-start").value,end:$("#f-end").value});const d=$("#f-date").value;const pay=/^\d{4}-\d{2}-\d{2}$/.test(d)?periodFor(d,set).payday:"";$("#f-calc").textContent=`${hrs(h)} × ${money(+set.rate)} = ${money(h*set.rate)} gross${pay?" · pays "+fmtPay(pay):""}${netLine(h*set.rate)}`};
+  ["#f-hours","#f-start","#f-end","#f-date"].forEach(i=>{$(i).oninput=calc;$(i).onchange=calc});calc();
   $("#m-r").onclick=()=>{mode="Remote";$("#m-r").classList.add("on");$("#m-i").classList.remove("on")};
   $("#m-i").onclick=()=>{mode="In-person";$("#m-i").classList.add("on");$("#m-r").classList.remove("on")};
   $("#s-u").onclick=()=>{st="upcoming";$("#s-u").classList.add("on");$("#s-w").classList.remove("on")};
@@ -294,9 +304,9 @@ function render(){
  if(view=="pay"){
   const map={};for(const s of shifts){const p=periodFor(s.date,set).payday;(map[p]=map[p]||[]).push(s)}
   Object.keys(pays).forEach(p=>map[p]=map[p]||[]);
-  $("#v-pay").innerHTML=`<div class="card chart"><div class="seg"><button data-cm="period">Per pay period</button><button data-cm="month">Per month</button></div>${chartSVG(chartMode)}</div><h2>Paydays</h2>${DISC}`+Object.keys(map).sort().reverse().map(p=>{const w=sum(map[p],set,s=>s.status=="worked"),a=sum(map[p],set,()=>true),r=pays[p];
+  $("#v-pay").innerHTML=`<div class="card chart"><div class="seg"><button data-cm="period">Per pay period</button><button data-cm="month">Per month</button></div>${chartSVG(chartMode)}</div><h2>Paydays</h2>${DISC}`+Object.keys(map).sort().reverse().map(p=>{const w=sum(map[p],set,s=>s.status=="worked"),a=sum(map[p],set,()=>true),r=pays[p],span=spanForPayday(p,set);
    return `<div class="card" style="border-left:4px solid ${r?"#fff":"#555"}"><div class="row"><b style="flex:2">${fmtD(p)}</b><b style="text-align:right">${money(a.g)}</b></div>
-   <div class="sub" style="margin-top:4px">${a.n} shift(s) · ${hrs(a.h)} · worked ${money(w.g)}${netLine(a.g)}</div>${taxBox(a.g)}
+   <div class="sub" style="margin-top:4px">Shifts ${span.start.slice(5)}–${span.end.slice(5)} · ${a.n} shift(s) · ${hrs(a.h)} · worked ${money(w.g)}${netLine(a.g)}</div>${taxBox(a.g)}
    ${r?`<div style="color:var(--grn);margin-top:4px">Received ${money(+r.amount)} · diff vs gross ${money(+r.amount-a.g)} · vs est. take-home ${money(+r.amount-net(a.g))}</div>`:""}
    <div class="row" style="margin-top:10px"><input type="number" step="0.01" inputmode="decimal" placeholder="Actual amount" data-amt="${p}" value="${r?r.amount:""}"><button class="pri" data-rcv="${p}">${r?"Update":"Mark received"}</button>${r?`<button data-clr="${p}">Clear</button>`:""}</div></div>`}).join("");
   $$("[data-cm]").forEach(b=>{b.classList.toggle("on",b.dataset.cm==chartMode);b.onclick=()=>{chartMode=b.dataset.cm;render()}});
@@ -306,7 +316,7 @@ function render(){
  if(view=="set"){
   $("#v-set").innerHTML=`<div class="card">
   <label>Hourly rate ($)</label><input type="number" step="0.01" id="c-rate" value="${set.rate}">
-  <label>Pay period split: shifts on day 1–N paid on the 15th; N+1–end paid on the 30th (last day in Feb)</label><input type="number" min="1" max="28" id="c-split" value="${set.split}">
+  <label>Pay period split: shifts on day 1–N are paid on the 30th of that month (last day in Feb); day N+1 through month-end are paid on the 15th of the next month</label><input type="number" min="1" max="28" id="c-split" value="${set.split}">
   <div class="row"><div><label>Season start month</label><input type="number" min="1" max="12" id="c-ss" value="${set.seasonStart}"></div><div><label>Season end month</label><input type="number" min="1" max="12" id="c-se" value="${set.seasonEnd}"></div></div>
   <label>Positions (comma separated)</label><input id="c-pos" value="${esc(set.positions.join(", "))}">
   <h2 style="margin:16px 0 4px">Taxes</h2>
