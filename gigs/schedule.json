@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-04T06:00:30+00:00",
+ "updated": "2026-11-22T22:18:57-05:00",
  "games": [
   {
    "id": "nhl-2026-11-01-230",
@@ -111,6 +111,114 @@
    "home": "TBL",
    "role": "Central Scorer - Shot Attempts - Visitor",
    "gameNumber": 388,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-11-27-404",
+   "date": "2026-11-27",
+   "time": "15:00",
+   "away": "OTT",
+   "home": "TBL",
+   "role": "Central Scorer - Shot Attempts - Visitor",
+   "gameNumber": 404,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-11-28-423",
+   "date": "2026-11-28",
+   "time": "19:30",
+   "away": "NYI",
+   "home": "PHI",
+   "role": "Event Analyst",
+   "gameNumber": 423,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-12-01-438",
+   "date": "2026-12-01",
+   "time": "19:00",
+   "away": "FLA",
+   "home": "NYI",
+   "role": "Central Scorer - Event Analyst",
+   "gameNumber": 438,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-12-03-452",
+   "date": "2026-12-03",
+   "time": "19:30",
+   "away": "NYI",
+   "home": "PHI",
+   "role": "Event Analyst",
+   "gameNumber": 452,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-12-06-477",
+   "date": "2026-12-06",
+   "time": "17:00",
+   "away": "NSH",
+   "home": "STL",
+   "role": "Central Scorer - Shot Attempts - Visitor",
+   "gameNumber": 477,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-12-11-511",
+   "date": "2026-12-11",
+   "time": "19:00",
+   "away": "CGY",
+   "home": "PHI",
+   "role": "Event Analyst",
+   "gameNumber": 511,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-12-12-516",
+   "date": "2026-12-12",
+   "time": "15:30",
+   "away": "PIT",
+   "home": "TBL",
+   "role": "Central Scorer - Shot Attempts - Visitor",
+   "gameNumber": 516,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-12-16-547",
+   "date": "2026-12-16",
+   "time": "19:30",
+   "away": "NYR",
+   "home": "PHI",
+   "role": "Event Analyst",
+   "gameNumber": 547,
+   "remote": true,
+   "estHours": 3,
+   "needsConfirm": true
+  },
+  {
+   "id": "nhl-2026-12-19-569",
+   "date": "2026-12-19",
+   "time": "15:30",
+   "away": "UTA",
+   "home": "EDM",
+   "role": "Central Scorer - Shot Attempts - Home",
+   "gameNumber": 569,
    "remote": true,
    "estHours": 3,
    "needsConfirm": true
